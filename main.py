@@ -74,7 +74,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, deprecate, is_wandb_available, load_image
 from diffusers.utils.import_utils import is_xformers_available
-from utils.dataset import MultiIlluminationDataset, SceneBatchSampler
+from utils.dataset import MultiIlluminationDataset
 
 from torch.utils.data import Dataset, random_split
 from accelerate.utils import DistributedDataParallelKwargs
@@ -405,8 +405,12 @@ def make_train_dataset(args):
 
     # In distributed training, the load_dataset function guarantees that only one local process can concurrently
     # download the dataset.
+
+    # dataset = MultiIlluminationDataset(args.video_folder,
+    #                                     frame_size=25, )
     dataset = MultiIlluminationDataset(args.video_folder,
-                                        frame_size=25)
+                                        frame_size=25, sample_n_frames=25)
+
     return dataset
 
 
@@ -1360,6 +1364,7 @@ def main():
     )
 
     for batch in train_dataloader:
+    
         images, depths, normals = batch["pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
                                 batch["depth_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
                                 batch["normal_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True)
@@ -1367,8 +1372,9 @@ def main():
         print(images.shape)
         print(depths.shape)
         print(normals.shape)
+        print("====")
 
-        depths_expanded = depths.expand(-1, -1, 3, -1, -1)  # Expand along dim=1 to 3 channels
+        # depths_expanded = depths.expand(-1, -1, 3, -1, -1)  # Expand along dim=1 to 3 channels
         del depths
 
         images = images.permute(1, 0, 2, 3, 4)

@@ -32,7 +32,7 @@ from PIL import Image, ImageDraw
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from torch.utils.data import RandomSampler
+from torch.utils.data import RandomSampler, Subset, DataLoader
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -52,8 +52,14 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, deprecate, is_wandb_available, load_image
 from diffusers.utils.import_utils import is_xformers_available
+from utils.dataset import MultiIlluminationDataset
 
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, random_split
+import kornia.augmentation as K
+from kornia.augmentation.container import ImageSequential
+from torchvision import transforms
+import kornia
+import imageio.v3 as iio
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.24.0.dev0")
@@ -66,74 +72,25 @@ def rand_log_normal(shape, loc=0., scale=1., device='cpu', dtype=torch.float32):
     u = torch.rand(shape, dtype=dtype, device=device) * (1 - 2e-7) + 1e-7
     return torch.distributions.Normal(loc, scale).icdf(u).exp()
 
+def make_train_dataset(args):
+    # Get the datasets: you can either provide your own training and evaluation files (see below)
+    # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
 
-class DummyDataset(Dataset):
-    def __init__(self, base_folder: str, num_samples=100000, width=1024, height=576, sample_frames=25):
-        """
-        Args:
-            num_samples (int): Number of samples in the dataset.
-            channels (int): Number of channels, default is 3 for RGB.
-        """
-        self.num_samples = num_samples
-        # Define the path to the folder containing video frames
-        self.base_folder = base_folder
-        self.folders = os.listdir(self.base_folder)
-        self.channels = 3
-        self.width = width
-        self.height = height
-        self.sample_frames = sample_frames
+    # In distributed training, the load_dataset function guarantees that only one local process can concurrently
+    # download the dataset.
+    dataset = MultiIlluminationDataset(args.video_folder,
+                                        frame_size=25, sample_n_frames=25)
+    return dataset
 
-    def __len__(self):
-        return self.num_samples
+def make_test_dataset(args):
+    # Get the datasets: you can either provide your own training and evaluation files (see below)
+    # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
 
-    def __getitem__(self, idx):
-        """
-        Args:
-            idx (int): Index of the sample to return.
-
-        Returns:
-            dict: A dictionary containing the 'pixel_values' tensor of shape (16, channels, 320, 512).
-        """
-        # Randomly select a folder (representing a video) from the base folder
-        chosen_folder = random.choice(self.folders)
-        folder_path = os.path.join(self.base_folder, chosen_folder)
-        frames = os.listdir(folder_path)
-        # Sort the frames by name
-        frames.sort()
-
-        # Ensure the selected folder has at least `sample_frames`` frames
-        if len(frames) < self.sample_frames:
-            raise ValueError(
-                f"The selected folder '{chosen_folder}' contains fewer than `{self.sample_frames}` frames.")
-
-        # Randomly select a start index for frame sequence
-        start_idx = random.randint(0, len(frames) - self.sample_frames)
-        selected_frames = frames[start_idx:start_idx + self.sample_frames]
-
-        # Initialize a tensor to store the pixel values
-        pixel_values = torch.empty((self.sample_frames, self.channels, self.height, self.width))
-
-        # Load and process each frame
-        for i, frame_name in enumerate(selected_frames):
-            frame_path = os.path.join(folder_path, frame_name)
-            with Image.open(frame_path) as img:
-                # Resize the image and convert it to a tensor
-                img_resized = img.resize((self.width, self.height))
-                img_tensor = torch.from_numpy(np.array(img_resized)).float()
-
-                # Normalize the image by scaling pixel values to [-1, 1]
-                img_normalized = img_tensor / 127.5 - 1
-
-                # Rearrange channels if necessary
-                if self.channels == 3:
-                    img_normalized = img_normalized.permute(
-                        2, 0, 1)  # For RGB images
-                elif self.channels == 1:
-                    img_normalized = img_normalized.mean(
-                        dim=2, keepdim=True)  # For grayscale images
-
-                pixel_values[i] = img_normalized
-        return {'pixel_values': pixel_values}
+    # In distributed training, the load_dataset function guarantees that only one local process can concurrently
+    # download the dataset.
+    dataset = MultiIlluminationDataset("/sdb5/data/test/",
+                                        frame_size=25, sample_n_frames=25)
+    return dataset
 
 # resizing utils
 # TODO: clean up later
@@ -297,7 +254,7 @@ def parse_args():
     )
     parser.add_argument(
         "--base_folder",
-        required=True,
+        # required=True,
         type=str,
     )
     parser.add_argument(
@@ -351,7 +308,7 @@ def parse_args():
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
-        "--seed", type=int, default=None, help="A seed for reproducible training."
+        "--seed", type=int, default=12345, help="A seed for reproducible training."
     )
     parser.add_argument(
         "--per_gpu_batch_size",
@@ -555,6 +512,15 @@ def parse_args():
         type=str,
         default=None,
         help="use weight for unet block",
+    )
+
+    parser.add_argument(
+        "--video_folder",
+        type=str,
+        default=None,
+        help=(
+            "path to the video folder"
+        ),
     )
 
     args = parser.parse_args()
@@ -787,13 +753,23 @@ def main():
     # DataLoaders creation:
     args.global_batch_size = args.per_gpu_batch_size * accelerator.num_processes
 
-    train_dataset = DummyDataset(args.base_folder, width=args.width, height=args.height, sample_frames=args.num_frames)
+    train_dataset = make_train_dataset(args)
+    test_dataset = make_test_dataset(args)
+
     sampler = RandomSampler(train_dataset)
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         sampler=sampler,
         batch_size=args.per_gpu_batch_size,
         num_workers=args.num_workers,
+    )
+
+    # Use regular DataLoader for test set, without shuffling
+    test_dataloader = DataLoader(
+        test_dataset,
+        batch_size=args.per_gpu_batch_size,
+        num_workers=args.num_workers,
+        shuffle=False
     )
 
     # Scheduler and math around the number of training steps.
@@ -835,7 +811,7 @@ def main():
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("SVDXtend", config=vars(args))
+        accelerator.init_trackers("DiffSVD_Relight", config=vars(args))
 
     # Train!
     total_batch_size = args.per_gpu_batch_size * \
@@ -939,17 +915,47 @@ def main():
                 continue
 
             with accelerator.accumulate(unet):
-                # first, convert images to latent space.
-                pixel_values = batch["pixel_values"].to(weight_dtype).to(
-                    accelerator.device, non_blocking=True
-                )
-                conditional_pixel_values = pixel_values[:, 0:1, :, :, :]
+                # first, load images from RGB, depth, normal, albedo, and scribbles.
+                
+                pixel_values, depths, normals, albedos, scribbles = batch["pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+                                                                    batch["depth_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+                                                                    batch["normal_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+                                                                    batch["alb_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+                                                                    batch["scb_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True)
 
-                latents = tensor_to_vae_latent(pixel_values, vae)
+                conditional_pixel_values = pixel_values[:, 0:1, :, :, :]
+            
+                # b x f x ch x W x H
+
+                print(pixel_values.shape)
+                print(depths.shape)
+                print(normals.shape)
+                print(albedos.shape)
+                print(scribbles.shape)
+
+
+                # 2nd, repeat 1-ch to 3-ch for depth and scribbles
+                
+                depths_exp = depths.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels
+                scribbles_exp = scribbles.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels
+
+                # 3rd, convert images to latent space then concatenate
+
+                tgt_latents = tensor_to_vae_latent(pixel_values, vae)
+                
+                enc_depth = tensor_to_vae_latent(depths_exp, vae)
+                enc_nrm = tensor_to_vae_latent(normals, vae)
+                enc_alb = tensor_to_vae_latent(albedos, vae)
+                enc_scb = tensor_to_vae_latent(scribbles_exp, vae)
+
+                add_latents = torch.cat([enc_depth, enc_nrm, enc_alb, enc_scb], dim=2)
+                print(latents.shape)
+
+                break 
 
                 # Sample noise that we'll add to the latents
-                noise = torch.randn_like(latents)
-                bsz = latents.shape[0]
+                noise = torch.randn_like(tgt_latents)
+                bsz = tgt_latents.shape[0]
 
                 cond_sigmas = rand_log_normal(shape=[bsz,], loc=-3.0, scale=0.5).to(latents)
                 noise_aug_strength = cond_sigmas[0] # TODO: support batch > 1
@@ -1013,11 +1019,16 @@ def main():
                 # Concatenate the `conditional_latents` with the `noisy_latents`.
                 conditional_latents = conditional_latents.unsqueeze(
                     1).repeat(1, noisy_latents.shape[1], 1, 1, 1)
+                # inp_noisy_latents = torch.cat(
+                #     [inp_noisy_latents, conditional_latents], dim=2)
+
                 inp_noisy_latents = torch.cat(
-                    [inp_noisy_latents, conditional_latents], dim=2)
+                    [inp_noisy_latents, conditional_latents, add_latents], dim=2)
 
                 # check https://arxiv.org/abs/2206.00364(the EDM-framework) for more details.
-                target = latents
+                # target = latents
+                target = tgt_latents
+
                 model_pred = unet(
                     inp_noisy_latents, timesteps, encoder_hidden_states, added_time_ids=added_time_ids).sample
 
@@ -1047,7 +1058,7 @@ def main():
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
-
+            print('debug_1')
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
                 if args.use_ema:
