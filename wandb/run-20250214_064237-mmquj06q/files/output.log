@@ -1,0 +1,35 @@
+INFO:__main__:***** Running training *****
+INFO:__main__:  Num examples = 985
+INFO:__main__:  Num Epochs = 100
+INFO:__main__:  Instantaneous batch size per device = 1
+INFO:__main__:  Total train batch size (w. parallel, distributed & accumulation) = 16
+INFO:__main__:  Gradient Accumulation steps = 16
+INFO:__main__:  Total optimization steps = 6200
+Steps:   0%|                                                                                                                                                                                                | 0/6200 [00:00<?, ?it/s]Traceback (most recent call last):
+torch.Size([1, 12, 3, 256, 256])
+torch.Size([1, 12, 1, 128, 128])
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight.py", line 1389, in <module>
+    main()
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight.py", line 1107, in main
+    mask_latents = tensor_to_vae_latent(mask_blended, vae_trainable)
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight.py", line 251, in tensor_to_vae_latent
+    latents = vae.encode(t).latent_dist.sample()
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/diffusers/utils/accelerate_utils.py", line 46, in wrapper
+    return method(self, *args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/diffusers/models/autoencoders/autoencoder_kl_temporal_decoder.py", line 327, in encode
+    h = self.encoder(x)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/diffusers/models/autoencoders/vae.py", line 156, in forward
+    sample = self.conv_in(sample)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/conv.py", line 554, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/conv.py", line 549, in _conv_forward
+    return F.conv2d(
+RuntimeError: Given groups=1, weight of size [128, 3, 3, 3], expected input[12, 1, 128, 128] to have 3 channels, but got 1 channels instead

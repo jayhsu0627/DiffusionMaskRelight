@@ -1,0 +1,15 @@
+{"time":"2025-02-14T06:58:03.908574696Z","level":"INFO","msg":"stream: starting","core version":"0.19.6","symlink path":"/sdb5/DiffusionMaskRelight/wandb/run-20250214_065803-eoydbyto/logs/debug-core.log"}
+{"time":"2025-02-14T06:58:04.213171226Z","level":"INFO","msg":"created new stream","id":"eoydbyto"}
+{"time":"2025-02-14T06:58:04.213208505Z","level":"INFO","msg":"stream: started","id":"eoydbyto"}
+{"time":"2025-02-14T06:58:04.213283695Z","level":"INFO","msg":"handler: started","stream_id":"eoydbyto"}
+{"time":"2025-02-14T06:58:04.21381341Z","level":"INFO","msg":"sender: started","stream_id":"eoydbyto"}
+{"time":"2025-02-14T06:58:04.213880833Z","level":"INFO","msg":"writer: Do: started","stream_id":"eoydbyto"}
+{"time":"2025-02-14T06:58:04.381502699Z","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-02-14T06:58:14.981308983Z","level":"INFO","msg":"stream: closing","id":"eoydbyto"}
+{"time":"2025-02-14T06:58:14.981380934Z","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-02-14T06:58:14.981994869Z","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-02-14T06:58:15.263280128Z","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-02-14T06:58:15.33468887Z","level":"INFO","msg":"handler: closed","stream_id":"eoydbyto"}
+{"time":"2025-02-14T06:58:15.33475524Z","level":"INFO","msg":"writer: Close: closed","stream_id":"eoydbyto"}
+{"time":"2025-02-14T06:58:15.334769753Z","level":"INFO","msg":"sender: closed","stream_id":"eoydbyto"}
+{"time":"2025-02-14T06:58:15.334843274Z","level":"INFO","msg":"stream: closed","id":"eoydbyto"}

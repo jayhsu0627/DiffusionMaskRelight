@@ -1,0 +1,13 @@
+INFO:__main__:***** Running training *****
+INFO:__main__:  Num examples = 985
+INFO:__main__:  Num Epochs = 100
+INFO:__main__:  Instantaneous batch size per device = 1
+INFO:__main__:  Total train batch size (w. parallel, distributed & accumulation) = 16
+INFO:__main__:  Gradient Accumulation steps = 16
+INFO:__main__:  Total optimization steps = 6200
+Steps:   1%|▊                                                                                                                                                       | 32/6200 [07:13<22:04:50, 12.89s/it, lr=1.92e-6, step_loss=1.05]
+VAE precision: torch.float16
+UNet precision: torch.float32
+Trainable VAE precision: torch.float32
+Optimizer dtype: torch.float32
+pixel_values dtype: torch.float32

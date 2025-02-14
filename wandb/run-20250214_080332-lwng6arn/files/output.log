@@ -1,0 +1,69 @@
+INFO:__main__:***** Running training *****
+INFO:__main__:  Num examples = 985
+INFO:__main__:  Num Epochs = 100
+INFO:__main__:  Instantaneous batch size per device = 1
+INFO:__main__:  Total train batch size (w. parallel, distributed & accumulation) = 16
+INFO:__main__:  Gradient Accumulation steps = 16
+INFO:__main__:  Total optimization steps = 6200
+Steps:   0%|                                                                                                                                                           | 1/6200 [00:30<47:51:57, 27.80s/it, lr=6e-8, step_loss=0.764]
+VAE precision: torch.float16
+UNet precision: torch.float32
+Trainable VAE precision: torch.float32
+Optimizer dtype: torch.float32
+pixel_values dtype: torch.float32
+depth_pixel_values dtype: torch.float32
+normal_pixel_values dtype: torch.float32
+alb_pixel_values dtype: torch.float32
+scb_pixel_values dtype: torch.float32
+shd_pixel_values dtype: torch.float32
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight.py", line 1439, in <module>
+    main()
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight.py", line 1173, in main
+    enc_nrm = tensor_to_vae_latent(normals, vae)
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight.py", line 255, in tensor_to_vae_latent
+    torch.cuda.empty_cache()  # 🚀 Free GPU memory
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/cuda/memory.py", line 218, in empty_cache
+    torch._C._cuda_emptyCache()
+KeyboardInterrupt

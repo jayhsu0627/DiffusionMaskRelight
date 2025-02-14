@@ -1,0 +1,51 @@
+INFO:__main__:***** Running training *****
+INFO:__main__:  Num examples = 985
+INFO:__main__:  Num Epochs = 100
+INFO:__main__:  Instantaneous batch size per device = 4
+INFO:__main__:  Total train batch size (w. parallel, distributed & accumulation) = 16
+INFO:__main__:  Gradient Accumulation steps = 4
+INFO:__main__:  Total optimization steps = 6200
+Steps:   0%|                                                                                                                                                                                                | 0/6200 [00:00<?, ?it/s]Traceback (most recent call last):
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight.py", line 1219, in <module>
+    main()
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight.py", line 1047, in main
+    model_pred = unet(
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/accelerate/utils/operations.py", line 819, in forward
+    return model_forward(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/accelerate/utils/operations.py", line 807, in __call__
+    return convert_to_fp32(self.model_forward(*args, **kwargs))
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/amp/autocast_mode.py", line 44, in decorate_autocast
+    return func(*args, **kwargs)
+  File "/sdb5/DiffusionMaskRelight/models/unet_spatio_temporal_condition.py", line 482, in forward
+    sample = upsample_block(
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/diffusers/models/unets/unet_3d_blocks.py", line 1524, in forward
+    hidden_states = resnet(
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/diffusers/models/resnet.py", line 708, in forward
+    hidden_states = self.temporal_res_block(hidden_states, temb)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/diffusers/models/resnet.py", line 611, in forward
+    hidden_states = self.norm1(hidden_states)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/normalization.py", line 313, in forward
+    return F.group_norm(input, self.num_groups, self.weight, self.bias, self.eps)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/functional.py", line 2965, in group_norm
+    return torch.group_norm(
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 64.00 MiB. GPU 0 has a total capacity of 39.38 GiB of which 45.38 MiB is free. Including non-PyTorch memory, this process has 39.33 GiB memory in use. Of the allocated memory 38.34 GiB is allocated by PyTorch, and 496.98 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)

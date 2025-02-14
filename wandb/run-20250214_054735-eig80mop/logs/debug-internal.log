@@ -1,0 +1,15 @@
+{"time":"2025-02-14T05:47:35.489655215Z","level":"INFO","msg":"stream: starting","core version":"0.19.6","symlink path":"/sdb5/DiffusionMaskRelight/wandb/run-20250214_054735-eig80mop/logs/debug-core.log"}
+{"time":"2025-02-14T05:47:35.79345449Z","level":"INFO","msg":"created new stream","id":"eig80mop"}
+{"time":"2025-02-14T05:47:35.79349953Z","level":"INFO","msg":"stream: started","id":"eig80mop"}
+{"time":"2025-02-14T05:47:35.793555413Z","level":"INFO","msg":"writer: Do: started","stream_id":"eig80mop"}
+{"time":"2025-02-14T05:47:35.793569169Z","level":"INFO","msg":"handler: started","stream_id":"eig80mop"}
+{"time":"2025-02-14T05:47:35.793627791Z","level":"INFO","msg":"sender: started","stream_id":"eig80mop"}
+{"time":"2025-02-14T05:47:35.884652381Z","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-02-14T05:47:49.739024453Z","level":"INFO","msg":"stream: closing","id":"eig80mop"}
+{"time":"2025-02-14T05:47:49.73911893Z","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-02-14T05:47:49.740116665Z","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-02-14T05:47:49.928137432Z","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-02-14T05:47:49.991824354Z","level":"INFO","msg":"handler: closed","stream_id":"eig80mop"}
+{"time":"2025-02-14T05:47:49.991870932Z","level":"INFO","msg":"writer: Close: closed","stream_id":"eig80mop"}
+{"time":"2025-02-14T05:47:49.991890402Z","level":"INFO","msg":"sender: closed","stream_id":"eig80mop"}
+{"time":"2025-02-14T05:47:49.991954058Z","level":"INFO","msg":"stream: closed","id":"eig80mop"}

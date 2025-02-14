@@ -1,0 +1,37 @@
+INFO:__main__:***** Running training *****
+INFO:__main__:  Num examples = 985
+INFO:__main__:  Num Epochs = 100
+INFO:__main__:  Instantaneous batch size per device = 1
+INFO:__main__:  Total train batch size (w. parallel, distributed & accumulation) = 16
+INFO:__main__:  Gradient Accumulation steps = 16
+INFO:__main__:  Total optimization steps = 6200
+Steps:   0%|                                                                                                                                                               | 1/6200 [00:36<48:05:50, 27.93s/it, lr=6e-8, step_loss=1]Traceback (most recent call last):
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+debug_1
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight.py", line 1219, in <module>
+    main()
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight.py", line 973, in main
+    cond_sigmas = rand_log_normal(shape=[bsz,], loc=-3.0, scale=0.5).to(tgt_latents)
+KeyboardInterrupt

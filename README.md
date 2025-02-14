@@ -14,7 +14,7 @@ python train_svd.py  \
 ```python
 CUDA_VISIBLE_DEVICES=0,1 python main.py  \
 --pretrained_model_name_or_path="stabilityai/stable-video-diffusion-img2vid"  \
---mixed_precision='fp16' \
+--mixed_precision='bf16' \
 --video_folder="/sdb5/data/train/"
 ```
 
@@ -22,8 +22,28 @@ CUDA_VISIBLE_DEVICES=0,1 python main.py  \
 CUDA_VISIBLE_DEVICES=1 python train_svd_relight.py  \
 --pretrained_model_name_or_path="stabilityai/stable-video-diffusion-img2vid"  \
 --mixed_precision='fp16' \
---video_folder="/sdb5/data/train/"
+--video_folder="/sdb5/data/train/" \
+--report_to="wandb" \
+--learning_rate=3e-5 \
+--lr_scheduler="cosine_with_restarts" \
+--per_gpu_batch_size=1 \
+--gradient_accumulation_steps=16 \
+--mixed_precision="fp16" \
+--num_train_epochs=100 \
+--output_dir="/sdb5/output_2"
+
 ```
+validation view
+```python
+CUDA_VISIBLE_DEVICES=0 python main.py  \
+--pretrained_model_name_or_path="stabilityai/stable-video-diffusion-img2vid"  \
+--pretrain_unet="/sdb5/output/checkpoint-5500/unet/" \
+--mixed_precision='fp16' \
+--video_folder="/sdb5/data/train/" \
+--output_dir="/sdb5/output"
+
+```
+
 
 # depth image is 16bit
 

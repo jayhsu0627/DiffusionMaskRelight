@@ -1,0 +1,17 @@
+INFO:__main__:***** Running training *****
+INFO:__main__:  Num examples = 985
+INFO:__main__:  Num Epochs = 100
+INFO:__main__:  Instantaneous batch size per device = 1
+INFO:__main__:  Total train batch size (w. parallel, distributed & accumulation) = 16
+INFO:__main__:  Gradient Accumulation steps = 16
+INFO:__main__:  Total optimization steps = 6200
+Steps:   0%|                                                                                                                                                                                                | 0/6200 [00:00<?, ?it/s]Traceback (most recent call last):
+torch.Size([12, 3, 256, 256])
+torch.Size([1, 12, 3, 128, 128])
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight.py", line 1396, in <module>
+    main()
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight.py", line 1116, in main
+    recon_shd = F.interpolate(mask_latents, scale_factor=2.0, mode="bilinear", align_corners=False)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/functional.py", line 4722, in interpolate
+    raise NotImplementedError("Got 5D input, but bilinear mode needs 4D input")
+NotImplementedError: Got 5D input, but bilinear mode needs 4D input

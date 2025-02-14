@@ -1,0 +1,136 @@
+INFO:__main__:***** Running training *****
+INFO:__main__:  Num examples = 985
+INFO:__main__:  Num Epochs = 100
+INFO:__main__:  Instantaneous batch size per device = 1
+INFO:__main__:  Total train batch size (w. parallel, distributed & accumulation) = 16
+INFO:__main__:  Gradient Accumulation steps = 16
+INFO:__main__:  Total optimization steps = 6200
+Steps:   8%|██████████████▏                                                                                                                                                                 | 500/6200 [2:22:00<27:13:11, 17.19s/it, lr=2.99e-5, step_loss=0.294]INFO:accelerate.accelerator:Saving current state to /sdb5/output/checkpoint-500
+Configuration saved in /sdb5/output/checkpoint-500/unet/config.json
+Model weights saved in /sdb5/output/checkpoint-500/unet/diffusion_pytorch_model.safetensors
+INFO:accelerate.checkpointing:Optimizer state saved in /sdb5/output/checkpoint-500/optimizer.bin
+INFO:accelerate.checkpointing:Scheduler state saved in /sdb5/output/checkpoint-500/scheduler.bin
+INFO:accelerate.checkpointing:Sampler state for dataloader 0 saved in /sdb5/output/checkpoint-500/sampler.bin
+INFO:accelerate.checkpointing:Gradient scaler state saved in /sdb5/output/checkpoint-500/scaler.pt
+INFO:accelerate.checkpointing:Random states saved in /sdb5/output/checkpoint-500/random_states_0.pkl
+INFO:__main__:Saved state to /sdb5/output/checkpoint-500
+Steps:  16%|████████████████████████████▏                                                                                                                                                  | 1000/6200 [4:43:38<24:32:26, 16.99s/it, lr=2.94e-5, step_loss=0.163]INFO:accelerate.accelerator:Saving current state to /sdb5/output/checkpoint-1000
+Configuration saved in /sdb5/output/checkpoint-1000/unet/config.json
+Model weights saved in /sdb5/output/checkpoint-1000/unet/diffusion_pytorch_model.safetensors
+INFO:accelerate.checkpointing:Optimizer state saved in /sdb5/output/checkpoint-1000/optimizer.bin
+INFO:accelerate.checkpointing:Scheduler state saved in /sdb5/output/checkpoint-1000/scheduler.bin
+INFO:accelerate.checkpointing:Sampler state for dataloader 0 saved in /sdb5/output/checkpoint-1000/sampler.bin
+INFO:accelerate.checkpointing:Gradient scaler state saved in /sdb5/output/checkpoint-1000/scaler.pt
+INFO:accelerate.checkpointing:Random states saved in /sdb5/output/checkpoint-1000/random_states_0.pkl
+INFO:__main__:Saved state to /sdb5/output/checkpoint-1000
+Steps:  24%|██████████████████████████████████████████▎                                                                                                                                    | 1500/6200 [7:05:18<22:13:45, 17.03s/it, lr=2.78e-5, step_loss=0.694]INFO:__main__:2 checkpoints already exist, removing 1 checkpoints
+INFO:__main__:removing checkpoints: checkpoint-500
+INFO:accelerate.accelerator:Saving current state to /sdb5/output/checkpoint-1500
+Configuration saved in /sdb5/output/checkpoint-1500/unet/config.json
+Model weights saved in /sdb5/output/checkpoint-1500/unet/diffusion_pytorch_model.safetensors
+INFO:accelerate.checkpointing:Optimizer state saved in /sdb5/output/checkpoint-1500/optimizer.bin
+INFO:accelerate.checkpointing:Scheduler state saved in /sdb5/output/checkpoint-1500/scheduler.bin
+INFO:accelerate.checkpointing:Sampler state for dataloader 0 saved in /sdb5/output/checkpoint-1500/sampler.bin
+INFO:accelerate.checkpointing:Gradient scaler state saved in /sdb5/output/checkpoint-1500/scaler.pt
+INFO:accelerate.checkpointing:Random states saved in /sdb5/output/checkpoint-1500/random_states_0.pkl
+INFO:__main__:Saved state to /sdb5/output/checkpoint-1500
+Steps:  32%|████████████████████████████████████████████████████████▍                                                                                                                      | 2000/6200 [9:25:43<19:56:58, 17.10s/it, lr=2.52e-5, step_loss=0.175]INFO:__main__:2 checkpoints already exist, removing 1 checkpoints
+INFO:__main__:removing checkpoints: checkpoint-1000
+INFO:accelerate.accelerator:Saving current state to /sdb5/output/checkpoint-2000
+Configuration saved in /sdb5/output/checkpoint-2000/unet/config.json
+Model weights saved in /sdb5/output/checkpoint-2000/unet/diffusion_pytorch_model.safetensors
+INFO:accelerate.checkpointing:Optimizer state saved in /sdb5/output/checkpoint-2000/optimizer.bin
+INFO:accelerate.checkpointing:Scheduler state saved in /sdb5/output/checkpoint-2000/scheduler.bin
+INFO:accelerate.checkpointing:Sampler state for dataloader 0 saved in /sdb5/output/checkpoint-2000/sampler.bin
+INFO:accelerate.checkpointing:Gradient scaler state saved in /sdb5/output/checkpoint-2000/scaler.pt
+INFO:accelerate.checkpointing:Random states saved in /sdb5/output/checkpoint-2000/random_states_0.pkl
+INFO:__main__:Saved state to /sdb5/output/checkpoint-2000
+Steps:  40%|██████████████████████████████████████████████████████████████████████▏                                                                                                       | 2500/6200 [11:46:17<17:32:48, 17.07s/it, lr=2.18e-5, step_loss=0.109]INFO:__main__:2 checkpoints already exist, removing 1 checkpoints
+INFO:__main__:removing checkpoints: checkpoint-1500
+INFO:accelerate.accelerator:Saving current state to /sdb5/output/checkpoint-2500
+Configuration saved in /sdb5/output/checkpoint-2500/unet/config.json
+Model weights saved in /sdb5/output/checkpoint-2500/unet/diffusion_pytorch_model.safetensors
+INFO:accelerate.checkpointing:Optimizer state saved in /sdb5/output/checkpoint-2500/optimizer.bin
+INFO:accelerate.checkpointing:Scheduler state saved in /sdb5/output/checkpoint-2500/scheduler.bin
+INFO:accelerate.checkpointing:Sampler state for dataloader 0 saved in /sdb5/output/checkpoint-2500/sampler.bin
+INFO:accelerate.checkpointing:Gradient scaler state saved in /sdb5/output/checkpoint-2500/scaler.pt
+INFO:accelerate.checkpointing:Random states saved in /sdb5/output/checkpoint-2500/random_states_0.pkl
+INFO:__main__:Saved state to /sdb5/output/checkpoint-2500
+Steps:  48%|████████████████████████████████████████████████████████████████████████████████████▏                                                                                         | 3000/6200 [14:06:48<14:58:38, 16.85s/it, lr=1.79e-5, step_loss=0.239]INFO:__main__:2 checkpoints already exist, removing 1 checkpoints
+INFO:__main__:removing checkpoints: checkpoint-2000
+INFO:accelerate.accelerator:Saving current state to /sdb5/output/checkpoint-3000
+Configuration saved in /sdb5/output/checkpoint-3000/unet/config.json
+Model weights saved in /sdb5/output/checkpoint-3000/unet/diffusion_pytorch_model.safetensors
+INFO:accelerate.checkpointing:Optimizer state saved in /sdb5/output/checkpoint-3000/optimizer.bin
+INFO:accelerate.checkpointing:Scheduler state saved in /sdb5/output/checkpoint-3000/scheduler.bin
+INFO:accelerate.checkpointing:Sampler state for dataloader 0 saved in /sdb5/output/checkpoint-3000/sampler.bin
+INFO:accelerate.checkpointing:Gradient scaler state saved in /sdb5/output/checkpoint-3000/scaler.pt
+INFO:accelerate.checkpointing:Random states saved in /sdb5/output/checkpoint-3000/random_states_0.pkl
+INFO:__main__:Saved state to /sdb5/output/checkpoint-3000
+Steps:  56%|██████████████████████████████████████████████████████████████████████████████████████████████████▏                                                                           | 3500/6200 [16:33:17<13:10:58, 17.58s/it, lr=1.38e-5, step_loss=0.131]INFO:__main__:2 checkpoints already exist, removing 1 checkpoints
+INFO:__main__:removing checkpoints: checkpoint-2500
+INFO:accelerate.accelerator:Saving current state to /sdb5/output/checkpoint-3500
+Configuration saved in /sdb5/output/checkpoint-3500/unet/config.json
+Model weights saved in /sdb5/output/checkpoint-3500/unet/diffusion_pytorch_model.safetensors
+INFO:accelerate.checkpointing:Optimizer state saved in /sdb5/output/checkpoint-3500/optimizer.bin
+INFO:accelerate.checkpointing:Scheduler state saved in /sdb5/output/checkpoint-3500/scheduler.bin
+INFO:accelerate.checkpointing:Sampler state for dataloader 0 saved in /sdb5/output/checkpoint-3500/sampler.bin
+INFO:accelerate.checkpointing:Gradient scaler state saved in /sdb5/output/checkpoint-3500/scaler.pt
+INFO:accelerate.checkpointing:Random states saved in /sdb5/output/checkpoint-3500/random_states_0.pkl
+INFO:__main__:Saved state to /sdb5/output/checkpoint-3500
+Steps:  65%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████▉                                                              | 4000/6200 [18:54:57<10:19:35, 16.90s/it, lr=9.76e-6, step_loss=0.13]INFO:__main__:2 checkpoints already exist, removing 1 checkpoints
+INFO:__main__:removing checkpoints: checkpoint-3000
+INFO:accelerate.accelerator:Saving current state to /sdb5/output/checkpoint-4000
+Configuration saved in /sdb5/output/checkpoint-4000/unet/config.json
+Model weights saved in /sdb5/output/checkpoint-4000/unet/diffusion_pytorch_model.safetensors
+INFO:accelerate.checkpointing:Optimizer state saved in /sdb5/output/checkpoint-4000/optimizer.bin
+INFO:accelerate.checkpointing:Scheduler state saved in /sdb5/output/checkpoint-4000/scheduler.bin
+INFO:accelerate.checkpointing:Sampler state for dataloader 0 saved in /sdb5/output/checkpoint-4000/sampler.bin
+INFO:accelerate.checkpointing:Gradient scaler state saved in /sdb5/output/checkpoint-4000/scaler.pt
+INFO:accelerate.checkpointing:Random states saved in /sdb5/output/checkpoint-4000/random_states_0.pkl
+INFO:__main__:Saved state to /sdb5/output/checkpoint-4000
+Steps:  73%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████                                                | 4500/6200 [21:15:37<8:03:26, 17.06s/it, lr=6.13e-6, step_loss=0.181]INFO:__main__:2 checkpoints already exist, removing 1 checkpoints
+INFO:__main__:removing checkpoints: checkpoint-3500
+INFO:accelerate.accelerator:Saving current state to /sdb5/output/checkpoint-4500
+Configuration saved in /sdb5/output/checkpoint-4500/unet/config.json
+Model weights saved in /sdb5/output/checkpoint-4500/unet/diffusion_pytorch_model.safetensors
+INFO:accelerate.checkpointing:Optimizer state saved in /sdb5/output/checkpoint-4500/optimizer.bin
+INFO:accelerate.checkpointing:Scheduler state saved in /sdb5/output/checkpoint-4500/scheduler.bin
+INFO:accelerate.checkpointing:Sampler state for dataloader 0 saved in /sdb5/output/checkpoint-4500/sampler.bin
+INFO:accelerate.checkpointing:Gradient scaler state saved in /sdb5/output/checkpoint-4500/scaler.pt
+INFO:accelerate.checkpointing:Random states saved in /sdb5/output/checkpoint-4500/random_states_0.pkl
+INFO:__main__:Saved state to /sdb5/output/checkpoint-4500
+Steps:  81%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████▏                                 | 5000/6200 [23:36:09<5:27:57, 16.40s/it, lr=3.17e-6, step_loss=0.154]INFO:__main__:2 checkpoints already exist, removing 1 checkpoints
+INFO:__main__:removing checkpoints: checkpoint-4000
+INFO:accelerate.accelerator:Saving current state to /sdb5/output/checkpoint-5000
+Configuration saved in /sdb5/output/checkpoint-5000/unet/config.json
+Model weights saved in /sdb5/output/checkpoint-5000/unet/diffusion_pytorch_model.safetensors
+INFO:accelerate.checkpointing:Optimizer state saved in /sdb5/output/checkpoint-5000/optimizer.bin
+INFO:accelerate.checkpointing:Scheduler state saved in /sdb5/output/checkpoint-5000/scheduler.bin
+INFO:accelerate.checkpointing:Sampler state for dataloader 0 saved in /sdb5/output/checkpoint-5000/sampler.bin
+INFO:accelerate.checkpointing:Gradient scaler state saved in /sdb5/output/checkpoint-5000/scaler.pt
+INFO:accelerate.checkpointing:Random states saved in /sdb5/output/checkpoint-5000/random_states_0.pkl
+INFO:__main__:Saved state to /sdb5/output/checkpoint-5000
+Steps:  89%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████▏                   | 5500/6200 [25:56:53<3:15:28, 16.76s/it, lr=1.11e-6, step_loss=0.165]INFO:__main__:2 checkpoints already exist, removing 1 checkpoints
+INFO:__main__:removing checkpoints: checkpoint-4500
+INFO:accelerate.accelerator:Saving current state to /sdb5/output/checkpoint-5500
+Configuration saved in /sdb5/output/checkpoint-5500/unet/config.json
+Model weights saved in /sdb5/output/checkpoint-5500/unet/diffusion_pytorch_model.safetensors
+INFO:accelerate.checkpointing:Optimizer state saved in /sdb5/output/checkpoint-5500/optimizer.bin
+INFO:accelerate.checkpointing:Scheduler state saved in /sdb5/output/checkpoint-5500/scheduler.bin
+INFO:accelerate.checkpointing:Sampler state for dataloader 0 saved in /sdb5/output/checkpoint-5500/sampler.bin
+INFO:accelerate.checkpointing:Gradient scaler state saved in /sdb5/output/checkpoint-5500/scaler.pt
+INFO:accelerate.checkpointing:Random states saved in /sdb5/output/checkpoint-5500/random_states_0.pkl
+INFO:__main__:Saved state to /sdb5/output/checkpoint-5500
+Steps:  97%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████▎     | 6000/6200 [28:17:52<55:07, 16.54s/it, lr=9.29e-8, step_loss=0.145]INFO:__main__:2 checkpoints already exist, removing 1 checkpoints
+INFO:__main__:removing checkpoints: checkpoint-5000
+INFO:accelerate.accelerator:Saving current state to /sdb5/output/checkpoint-6000
+Configuration saved in /sdb5/output/checkpoint-6000/unet/config.json
+Model weights saved in /sdb5/output/checkpoint-6000/unet/diffusion_pytorch_model.safetensors
+INFO:accelerate.checkpointing:Optimizer state saved in /sdb5/output/checkpoint-6000/optimizer.bin
+INFO:accelerate.checkpointing:Scheduler state saved in /sdb5/output/checkpoint-6000/scheduler.bin
+INFO:accelerate.checkpointing:Sampler state for dataloader 0 saved in /sdb5/output/checkpoint-6000/sampler.bin
+INFO:accelerate.checkpointing:Gradient scaler state saved in /sdb5/output/checkpoint-6000/scaler.pt
+INFO:accelerate.checkpointing:Random states saved in /sdb5/output/checkpoint-6000/random_states_0.pkl
+INFO:__main__:Saved state to /sdb5/output/checkpoint-6000
+Steps: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 6200/6200 [29:14:16<00:00, 14.55s/it, lr=2.28e-12, step_loss=0.177]

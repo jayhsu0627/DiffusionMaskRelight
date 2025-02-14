@@ -1,22 +1,3 @@
-# import torch
-
-# from diffusers import StableVideoDiffusionPipeline
-# from diffusers.utils import load_image, export_to_video
-
-# pipe = StableVideoDiffusionPipeline.from_pretrained(
-#     "stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16"
-# )
-# pipe.enable_model_cpu_offload()
-
-# # Load the conditioning image
-# image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png")
-# image = image.resize((1024, 576))
-
-# generator = torch.manual_seed(42)
-# frames = pipe(image, decode_chunk_size=8, generator=generator).frames[0]
-
-# export_to_video(frames, "/sdb5/DiffusionMaskRelight/generated.mp4", fps=7)
-
 #!/usr/bin/env python
 # coding=utf-8
 # Copyright 2023 The HuggingFace Inc. team. All rights reserved.
@@ -66,9 +47,15 @@ from einops import rearrange
 
 import datetime
 import diffusers
-from diffusers import StableVideoDiffusionPipeline
+# from diffusers import StableVideoDiffusionPipeline
+from models.pipeline_stable_video_diffusion import StableVideoDiffusionPipeline
+
 from diffusers.models.lora import LoRALinearLayer
-from diffusers import AutoencoderKLTemporalDecoder, EulerDiscreteScheduler, UNetSpatioTemporalConditionModel
+from diffusers import AutoencoderKLTemporalDecoder, EulerDiscreteScheduler
+
+# Load the added input_ch unet
+from models.unet_spatio_temporal_condition import UNetSpatioTemporalConditionModel
+
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
@@ -400,17 +387,14 @@ sigma_data = 0.5
 
 
 def make_train_dataset(args):
-    # Get the datasets: you can either provide your own training and evaluation files (see below)
-    # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
-
-    # In distributed training, the load_dataset function guarantees that only one local process can concurrently
-    # download the dataset.
-
-    # dataset = MultiIlluminationDataset(args.video_folder,
-    #                                     frame_size=25, )
     dataset = MultiIlluminationDataset(args.video_folder,
                                         frame_size=25, sample_n_frames=25)
 
+    return dataset
+
+def make_test_dataset(args):
+    dataset = MultiIlluminationDataset("/sdb5/data/test/",
+                                        frame_size=25, sample_n_frames=25)
     return dataset
 
 
@@ -567,21 +551,85 @@ def tensor_to_vae_latent(t, vae):
 
     return latents
 
-def latent_to_tensor(latents, vae, frames=2):
+# def latent_to_tensor(latents, vae, frames=2):
 
+#     video_length = latents.shape[1]
+#     print(vae.config.scaling_factor)
+
+#     latents = latents / vae.config.scaling_factor
+#     latents = rearrange(latents, "b f c h w -> (b f) c h w")
+    
+#     t = vae.decode(latents, num_frames = frames).sample
+    
+#     # dec = self.decode(z, num_frames=num_frames).sample
+
+#     t = rearrange(t, "(b f) c h w -> b f c h w", f=video_length)
+    
+#     # latents = latents * vae.config.scaling_factor
+
+#     return t
+
+# def latent_to_tensor(latents, vae, frames=2):
+#     video_length = latents.shape[1]
+#     latents = latents / vae.config.scaling_factor
+    
+#     # Process in smaller batches
+#     batch_size = 4  # Adjust based on your GPU memory
+#     decoded_frames = []
+    
+#     for i in range(0, video_length, batch_size):
+#         batch_latents = latents[:, i:i+batch_size]
+#         batch_latents = rearrange(batch_latents, "b f c h w -> (b f) c h w")
+        
+#         with torch.no_grad():  # Optional: if you don't need gradients
+#             decoded = vae.decode(batch_latents, num_frames=frames).sample
+        
+#         decoded = rearrange(decoded, "(b f) c h w -> b f c h w", f=min(batch_size, video_length-i))
+#         decoded_frames.append(decoded)
+    
+#     # Concatenate all batches
+#     t = torch.cat(decoded_frames, dim=1)
+#     return t
+
+# def latent_to_tensor(latents, vae, frames=2):
+#     video_length = latents.shape[1]
+#     latents = latents / vae.config.scaling_factor
+    
+#     # Process in smaller batches
+#     batch_size = 4  # Adjust based on your GPU memory
+#     decoded_frames = []
+    
+#     for i in range(0, video_length, batch_size):
+#         batch_latents = latents[:, i:i+batch_size]
+#         current_batch_size = batch_latents.shape[1]  # Actual number of frames in this batch
+#         batch_latents = rearrange(batch_latents, "b f c h w -> (b f) c h w")
+        
+#         with torch.no_grad():  # Optional: if you don't need gradients
+#             # Make sure num_frames matches the current batch
+#             decoded = vae.decode(batch_latents, num_frames=current_batch_size).sample
+        
+#         decoded = rearrange(decoded, "(b f) c h w -> b f c h w", f=current_batch_size)
+#         decoded_frames.append(decoded)
+    
+#     # Concatenate all batches
+#     t = torch.cat(decoded_frames, dim=1)
+#     return t
+
+def latent_to_tensor(latents, vae):
     video_length = latents.shape[1]
-    print(vae.config.scaling_factor)
-
+    
     latents = latents / vae.config.scaling_factor
     latents = rearrange(latents, "b f c h w -> (b f) c h w")
-    
-    t = vae.decode(latents, num_frames = frames).sample
-    
-    # dec = self.decode(z, num_frames=num_frames).sample
 
-    t = rearrange(t, "(b f) c h w -> b f c h w", f=video_length)
+    decoded_frames = []
     
-    # latents = latents * vae.config.scaling_factor
+    for i in range(video_length):  # Decode one frame at a time to reduce memory usage
+        frame_latent = latents[i].unsqueeze(0)  # Process one frame at a time
+        frame = vae.decode(frame_latent).sample
+        decoded_frames.append(frame)
+
+    t = torch.cat(decoded_frames, dim=0)  # Reassemble frames
+    t = rearrange(t, "(b f) c h w -> b f c h w", f=video_length)
 
     return t
 
@@ -719,7 +767,7 @@ def parse_args():
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
-        "--seed", type=int, default=None, help="A seed for reproducible training."
+        "--seed", type=int, default=12345, help="A seed for reproducible training."
     )
     parser.add_argument(
         "--per_gpu_batch_size",
@@ -1053,7 +1101,7 @@ def parse_args():
 
 def pil_image_to_numpy(image):
     img = image
-    image = img.resize((img.size[0]//4, img.size[1]//4))
+    image = img.resize((img.size[0]//2, img.size[1]//2))
 
     """Convert a PIL image to a NumPy array."""
     if image.mode != 'RGB':
@@ -1074,95 +1122,47 @@ def is_all_white(image):
 def main():
 
     args = parse_args()
-
-    # logging_dir = os.path.join(args.output_dir, args.logging_dir)
-    # accelerator_project_config = ProjectConfiguration(
-    #     project_dir=args.output_dir, logging_dir=logging_dir)
-
     accelerator = Accelerator()
-
-    generator = torch.Generator(device=accelerator.device).manual_seed(23123134)
-
-    # if args.report_to == "wandb":
-    #     if not is_wandb_available():
-    #         raise ImportError(
-    #             "Make sure to install wandb if you want to use it for logging during training.")
-    #     import wandb
-
-    # # Make one log on every process with the configuration for debugging.
-    # logging.basicConfig(
-    #     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-    #     datefmt="%m/%d/%Y %H:%M:%S",
-    #     level=logging.INFO,
-    # )
-    # logger.info(accelerator.state, main_process_only=False)
-    # if accelerator.is_local_main_process:
-    #     transformers.utils.logging.set_verbosity_warning()
-    #     diffusers.utils.logging.set_verbosity_info()
-    # else:
-    #     transformers.utils.logging.set_verbosity_error()
-    #     diffusers.utils.logging.set_verbosity_error()
-
-    # # If passed along, set the training seed now.
-    # if args.seed is not None:
-    #     set_seed(args.seed)
-
-    # # Handle the repository creation
-    # if accelerator.is_main_process:
-    #     if args.output_dir is not None:
-    #         os.makedirs(args.output_dir, exist_ok=True)
-
-    #     if args.push_to_hub:
-    #         repo_id = create_repo(
-    #             repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
-    #         ).repo_id
-
-    # Load scheduler, tokenizer and models.
-    # feature_extractor = CLIPImageProcessor.from_pretrained(
-    #     "stabilityai/stable-video-diffusion-img2vid", subfolder="feature_extractor", revision=args.revision
-    # )
-
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
 
     image_encoder = CLIPVisionModelWithProjection.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="image_encoder", revision=args.revision
     )
-
     vae = AutoencoderKLTemporalDecoder.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant="fp16")
     
-    # to be trained
+    # # Create an instance of the model
+    # model = UNetSpatioTemporalConditionModel()
+
+    # # Print the input channels
+    # print("Input channels:", model.conv_in.in_channels)
+
+    # # print(vars(UNetSpatioTemporalConditionModel()) )
+
+    # # to be trained
     unet = UNetSpatioTemporalConditionModel.from_pretrained(
         args.pretrained_model_name_or_path if args.pretrain_unet is None else args.pretrain_unet,
         subfolder="unet",
-        low_cpu_mem_usage=True,
-        variant="fp16"
+        low_cpu_mem_usage=False,
+        ignore_mismatched_sizes=True
     )
-
-    # if args.controlnet_model_name_or_path:
-    #     logger.info("Loading existing controlnet weights")
-    #     controlnet = ControlNetSDVModel.from_pretrained(args.controlnet_model_name_or_path)
-    # else:
-    #     logger.info("Initializing controlnet weights from unet")
-    #     controlnet = ControlNetSDVModel.from_unet(unet)
         
-    # # Freeze vae and image_encoder
-    # vae.requires_grad_(False)
-    # image_encoder.requires_grad_(False)
-    # unet.requires_grad_(False)
-    # controlnet.requires_grad_(False)
 
-    # # For mixed precision training we cast the text_encoder and vae weights to half-precision
-    # # as these models are only used for inference, keeping weights in full precision is not required.
+    # For mixed precision training we cast the text_encoder and vae weights to half-precision
+    # as these models are only used for inference, keeping weights in full precision is not required.
     # weight_dtype = torch.float32
-    # if accelerator.mixed_precision == "fp16":
-    
-    weight_dtype = torch.float16
-    # weight_dtype = torch.float8_e4m3fn
+    weight_dtype = torch.bfloat16
+
+    if accelerator.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif accelerator.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+    print(weight_dtype)
 
     # Move image_encoder and vae to gpu and cast to weight_dtype
     # image_encoder.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
-    # unet.to(accelerator.device, dtype=weight_dtype)
+    unet.to(accelerator.device, dtype=weight_dtype)
 
     #controlnet.to(accelerator.device, dtype=weight_dtype)
     # Create EMA for the unet.
@@ -1184,33 +1184,8 @@ def main():
     #         raise ValueError(
     #             "xformers is not available. Make sure it is installed correctly")
 
-    dataset = make_train_dataset(args)
-
-    # Define split sizes
-    dataset_size = len(dataset)
-    train_size = int(0.8 * dataset_size)
-    test_size = dataset_size - train_size
-
-    # Randomly shuffle indices and split
-    indices = np.random.permutation(dataset_size)
-    train_indices, test_indices = indices[:train_size], indices[train_size:]
-
-    # # Create training and test subsets
-    # train_dataset = Subset(dataset, train_indices)
-    # test_dataset = Subset(dataset, test_indices)
-
-    train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
-
-    # Dataloaders
-
-    sampler = SceneBatchSampler(train_dataset, 25)
-
-    train_dataloader = DataLoader(
-        train_dataset,
-        batch_sampler=sampler,
-        batch_size=args.per_gpu_batch_size,
-        num_workers=args.num_workers,
-    )
+    test_dataset = make_test_dataset(args)
+    # test_dataset = make_train_dataset(args)
 
     # Use regular DataLoader for test set, without shuffling
     test_dataloader = DataLoader(
@@ -1220,50 +1195,15 @@ def main():
         shuffle=False
     )
 
-    # Scheduler and math around the number of training steps.
-    overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / args.gradient_accumulation_steps)
-    if args.max_train_steps is None:
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-        overrode_max_train_steps = True
-
-    # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / args.gradient_accumulation_steps)
-    if overrode_max_train_steps:
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-    # Afterwards we recalculate our number of training epochs
-    args.num_train_epochs = math.ceil(
-        args.max_train_steps / num_update_steps_per_epoch)
-
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
         accelerator.init_trackers("SVDXtend", config=vars(args))
-
-    # Train!
-    total_batch_size = args.per_gpu_batch_size * \
-        accelerator.num_processes * args.gradient_accumulation_steps
-
-    global_step = 0
-    first_epoch = 0
-
-    # # Only show the progress bar once on each machine.
-    # progress_bar = tqdm(range(global_step, args.max_train_steps),
-    #                     disable=not accelerator.is_local_main_process)
-    # progress_bar.set_description("Steps")
-
-    # for step, batch in enumerate(train_dataloader):
-    #     print(weight_dtype)
-    #     # load_image = False
-    #     load_image = True
-    #     if load_image:
             
     preprocessed_dir = "/sdb5/DiffusionMaskRelight/vae_val"
     # output_type = 'g_buffer'
     # output_type = 'rgb'
-    output_type = 'concat'
+    output_type = 'rgb'
 
     def natural_sort_key(s):
         import re
@@ -1310,7 +1250,7 @@ def main():
 
     # Sort and limit the number of image and condition files to 14
     if output_type == 'rgb':
-        image_files = sorted(os.listdir(preprocessed_dir), key=natural_sort_key)[:5]
+        image_files = sorted(os.listdir(preprocessed_dir), key=natural_sort_key)[:24]
     elif output_type == 'g_biffer':
         image_files = [file for file in sorted(os.listdir(preprocessed_dir)) if file in ('all_normal.png', 'all_depth.png')]
     elif output_type == 'concat':
@@ -1322,104 +1262,101 @@ def main():
     
 
 
-    # # numpy_images = np.array([pil_image_to_numpy(Image.open(os.path.join(preprocessed_dir, img))) for img in image_files])
-    # numpy_images = load_images_with_depth_processing(preprocessed_dir, image_files)
-    # print('numpy_images:', numpy_images.shape)
+    # numpy_images = np.array([pil_image_to_numpy(Image.open(os.path.join(preprocessed_dir, img))) for img in image_files])
+    numpy_images = load_images_with_depth_processing(preprocessed_dir, image_files)
+    print('numpy_images:', numpy_images.shape)
 
 
-    # pixel_values = numpy_to_pt(numpy_images).to(weight_dtype).to(
-    #     accelerator.device, non_blocking=True
-    # )
-    # pixel_values = pixel_values.unsqueeze(0)
-    # print("pixel_values", pixel_values.shape)
-    #     # else:
-    #     #     pixel_values = batch["pixel_values"].to(weight_dtype).to(
-    #     #         accelerator.device, non_blocking=True
-    #     #     )
-
-    # latents = tensor_to_vae_latent(pixel_values, vae).to(weight_dtype).to(
-    #     accelerator.device, non_blocking=True
-    # )
-    # # encoded
-    # save_generated_images(pixel_values, "/sdb5/DiffusionMaskRelight/outputs/" + str(output_type), "org")
-
-    # # latent space
-    # save_latents_as_images(latents, "/sdb5/DiffusionMaskRelight/outputs/" + str(output_type))
-
-    # # decoded
-
-    # recon_pix_values = latent_to_tensor(latents, vae, frames = pixel_values.shape[1])
-    # save_generated_images(recon_pix_values, "/sdb5/DiffusionMaskRelight/outputs/" + str(output_type), "rec")
-
-
-    # The models need unwrapping because for compatibility in distributed training mode.
-    pipeline = StableVideoDiffusionPipeline.from_pretrained(
-        args.pretrained_model_name_or_path,
-        unet=accelerator.unwrap_model(unet),
-        image_encoder=accelerator.unwrap_model(
-            image_encoder),
-        vae=accelerator.unwrap_model(vae),
-        revision=args.revision,
-        torch_dtype=weight_dtype,
+    pixel_values = numpy_to_pt(numpy_images).to(weight_dtype).to(
+        accelerator.device, non_blocking=True
     )
+    pixel_values = pixel_values.unsqueeze(0)
+    print("pixel_values", pixel_values.shape)
+        # else:
+        #     pixel_values = batch["pixel_values"].to(weight_dtype).to(
+        #         accelerator.device, non_blocking=True
+        #     )
 
-    for batch in train_dataloader:
-    
-        images, depths, normals = batch["pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
-                                batch["depth_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
-                                batch["normal_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True)
-        # Frame x batch x ch x W x H
-        print(images.shape)
-        print(depths.shape)
-        print(normals.shape)
-        print("====")
+    latents = tensor_to_vae_latent(pixel_values, vae).to(weight_dtype).to(
+        accelerator.device, non_blocking=True
+    )
+    # encoded
+    save_generated_images(pixel_values, "/sdb5/DiffusionMaskRelight/outputs/" + str(output_type), "org")
 
-        # depths_expanded = depths.expand(-1, -1, 3, -1, -1)  # Expand along dim=1 to 3 channels
-        del depths
+    # latent space
+    save_latents_as_images(latents, "/sdb5/DiffusionMaskRelight/outputs/" + str(output_type))
 
-        images = images.permute(1, 0, 2, 3, 4)
-        depths_expanded = depths_expanded.permute(1, 0, 2, 3, 4)
-        normals = normals.permute(1, 0, 2, 3, 4)
+    # decoded
 
-        enc_img = tensor_to_vae_latent(images, vae).to(weight_dtype).to(accelerator.device, non_blocking=True)
-        del images
-
-        enc_depth = tensor_to_vae_latent(depths_expanded, vae).to(weight_dtype).to(accelerator.device, non_blocking=True)
-        del depths_expanded
-        enc_nrm = tensor_to_vae_latent(normals, vae).to(weight_dtype).to(accelerator.device, non_blocking=True)
-
-        # G-buffer g
-        concatenated_tensor = torch.cat([enc_depth, enc_nrm], dim=2)
-
-        print("image:", enc_img.shape)
-        print("depth:", enc_depth.shape)
-        print("normal:", enc_nrm.shape)
-        save_latents_as_images(concatenated_tensor, "/sdb5/DiffusionMaskRelight/outputs/g_b.png")
+    recon_pix_values = latent_to_tensor(latents, vae)
+    save_generated_images(recon_pix_values, "/sdb5/DiffusionMaskRelight/outputs/" + str(output_type), "rec")
 
 
-        # print(depths_expanded.shape)  # torch.Size([1, 3, 512, 512])
-
-        break
-        # concatenate image
-
-
+    # # The models need unwrapping because for compatibility in distributed training mode.
+    # pipeline = StableVideoDiffusionPipeline.from_pretrained(
+    #     args.pretrained_model_name_or_path,
+    #     unet=unet,
+    #     image_encoder=image_encoder,
+    #     vae=vae,
+    #     revision=args.revision,
+    #     torch_dtype=weight_dtype,
+    # )
     # pipeline = pipeline.to(accelerator.device)
-    # pipeline.set_progress_bar_config(disable=True)
 
-    # video_frames = pipeline(
-    #     load_image('demo.jpg').resize((args.width, args.height)),
-    #     height=args.height,
-    #     width=args.width,
-    #     num_frames=num_frames,
-    #     decode_chunk_size=8,
-    #     motion_bucket_id=127,
-    #     fps=7,
-    #     noise_aug_strength=0.02,
-    #     # generator=generator,
-    # ).frames[0]
+    # for batch in test_dataloader:
+    
+    #     pixel_values, depths, normals, albedos, scribbles = batch["pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+    #                                                         batch["depth_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+    #                                                         batch["normal_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+    #                                                         batch["alb_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+    #                                                         batch["scb_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True)
+    #     input_image = pixel_values[:, 0:1, :, :, :][0]
+    #     input_image = (input_image+1)/2
+    #     print("input", input_image.shape)
+    #     video_frames = pipeline(
+    #         input_image[0],
+    #         g_buffer= [depths, normals, albedos, scribbles],
+    #         height=256,
+    #         width=256,
+    #         num_frames= 25,
+    #         decode_chunk_size=8,
+    #         motion_bucket_id=127,
+    #         fps=7,
+    #         noise_aug_strength=0.02,
+    #         generator=generator,
+    #     ).frames[0]
 
-        # break
+    #     val_save_dir = os.path.join(
+    #         args.output_dir, "validation_images")
 
+    #     if not os.path.exists(val_save_dir):
+    #         os.makedirs(val_save_dir)
+
+    #     out_file = os.path.join(
+    #         val_save_dir,
+    #         f"val_img_6000_1.mp4",
+    #     )
+    #     out_file_gt = os.path.join(
+    #         val_save_dir,
+    #         f"val_gt_6000_1.mp4",
+    #     )
+
+    #     for i in range(25):
+    #         img = video_frames[i]
+    #         video_frames[i] = np.array(img)
+    #     export_to_gif(video_frames, out_file, 8)
+
+    #     for i in range(25):
+
+    #         img_np = pixel_values[0][i].detach().cpu().numpy()  # Convert to NumPy array
+    #         img_np = np.transpose(img_np, (1, 2, 0))
+    #         img_np = ((img_np + 1) / 2 * 255).astype(np.uint8)
+    #         video_frames[i] = img_np
+
+    #     export_to_gif(video_frames, out_file_gt, 8)
+
+    #     break
+    #     # concatenate image
 
 
 if __name__ == "__main__":

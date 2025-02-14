@@ -58,12 +58,17 @@ def save_array_as_image_depth(array, filename):
 class MultiIlluminationDataset(Dataset):
     def __init__(
             self,
-            root_dir, frame_size=25, sample_n_frames=14
+            root_dir, frame_size=25, sample_n_frames=14, mixed_precision=""
         ):
         # zero_rank_print(f"loading annotations from {csv_path} ...")
         
         self.root_dir = root_dir
         self.frame_size = frame_size
+        self.weight_dtype= torch.float32
+        if mixed_precision == "fp16":
+            self.weight_dtype = torch.float16
+        elif mixed_precision == "bf16":
+            self.weight_dtype = torch.bfloat16
 
         # Find all scene directories
         self.scene_dirs = sorted(glob.glob(os.path.join(root_dir, "*")))
@@ -98,7 +103,23 @@ class MultiIlluminationDataset(Dataset):
         else:
             return 9999
 
-    def sort_frames_choose(self, frame_name):
+    def sort_frames_scb(self, frame_name):
+        # Extract the numeric part from the filename
+        # dir_0_mip2_scb.png
+        frame_name = frame_name.split('.')[0]
+        parts = frame_name.split('_')
+        suffix_real= parts[-1]
+
+        # print('parts', parts)
+        if len(parts) > 3:
+            if suffix_real == 'scb':
+                return int(parts[1])
+            else:
+                return 999
+        else:
+            return 9999
+
+    def sort_frames_shd(self, frame_name):
         # Extract the numeric part from the filename
         # dir_0_mip2_scb.png
         # dir_0_mip2_shd.png
@@ -110,7 +131,7 @@ class MultiIlluminationDataset(Dataset):
 
         # print('parts', parts)
         if len(parts) > 3:
-            if suffix_real == 'scb':
+            if suffix_real == 'shd':
                 return int(parts[1])
             else:
                 return 999
@@ -145,13 +166,15 @@ class MultiIlluminationDataset(Dataset):
             alb_files = [os.path.basename(alb_folder)] * self.sample_n_frames
 
             # Choose scribbles
-            scb_files = sorted(os.listdir(preprocessed_dir), key=self.sort_frames_choose)[:self.sample_n_frames]
-
+            scb_files = sorted(os.listdir(preprocessed_dir), key=self.sort_frames_scb)[:self.sample_n_frames]
+            shd_files = sorted(os.listdir(preprocessed_dir), key=self.sort_frames_shd)[:self.sample_n_frames]
+            
             # print('rgb', image_files)
             # print('dep', depth_files)
             # print('nrm', normal_files)
             # print('alb', alb_files)
             # print('scb', scb_files)
+            # print('shd', shd_files)
 
             # Check if there are enough frames for both image and depth
             if len(image_files) < self.sample_n_frames or len(depth_files) < self.sample_n_frames:
@@ -161,7 +184,7 @@ class MultiIlluminationDataset(Dataset):
             # Load image frames
             numpy_images = np.array([pil_image_to_numpy(Image.open(os.path.join(preprocessed_dir, img))) for img in image_files])
             pixel_values = numpy_to_pt(numpy_images)
-            pixel_values = pixel_values*2 -1
+            # pixel_values = pixel_values*2 -1
 
             # Load depth frames
             # numpy_depth_images = np.array([pil_image_to_numpy(Image.open(os.path.join(video_dict, df))) for df in depth_files])
@@ -171,30 +194,36 @@ class MultiIlluminationDataset(Dataset):
             numpy_depth_images = np.array([((np.array(Image.open(os.path.join(video_dict, df)))/65535.0)* 255).astype(np.uint8) for df in depth_files])
             numpy_depth_images = np.stack([numpy_depth_images] * 3, axis=-1)
             depth_pixel_values = numpy_to_pt(numpy_depth_images)
-            depth_pixel_values = depth_pixel_values*2 -1
+            # depth_pixel_values = depth_pixel_values*2 -1
 
             # Load normal frames
             numpy_nrm_images = np.array([pil_image_to_numpy(Image.open(os.path.join(video_dict, nm))) for nm in normal_files])
             normal_pixel_values = numpy_to_pt(numpy_nrm_images)
-            normal_pixel_values = normal_pixel_values*2 -1
+            # normal_pixel_values = normal_pixel_values*2 -1
 
             # Load alb frames
             numpy_alb_images = np.array([pil_image_to_numpy(Image.open(os.path.join(video_dict, alb))) for alb in alb_files])
             alb_pixel_values = numpy_to_pt(numpy_alb_images)
-            alb_pixel_values = alb_pixel_values*2 -1
+            # alb_pixel_values = alb_pixel_values*2 -1
 
             # Load scb frames
             numpy_scb_images = np.array([pil_image_to_numpy(Image.open(os.path.join(preprocessed_dir, img))) for img in scb_files])
             scb_pixel_values = numpy_to_pt(numpy_scb_images)
-            scb_pixel_values = scb_pixel_values*2 -1
-            
+            # scb_pixel_values = scb_pixel_values*2 -1
+
+            # Load shd frames
+            numpy_shd_images = np.array([pil_image_to_numpy(Image.open(os.path.join(preprocessed_dir, img))) for img in shd_files])
+            shd_pixel_values = numpy_to_pt(numpy_shd_images)
+            # shd_pixel_values = shd_pixel_values*2 -1
+
             pixel_values = self.transforms_0(pixel_values)
             depth_pixel_values = self.transforms_0(depth_pixel_values)
             normal_pixel_values = self.transforms_0(normal_pixel_values)
             alb_pixel_values = self.transforms_0(alb_pixel_values)
             scb_pixel_values = self.transforms_0(scb_pixel_values)
+            shd_pixel_values = self.transforms_0(shd_pixel_values)
 
-            return pixel_values, depth_pixel_values[:, 0:1, :, :], normal_pixel_values, alb_pixel_values, scb_pixel_values[:, 0:1, :, :]
+            return pixel_values, depth_pixel_values[:, 0:1, :, :], normal_pixel_values, alb_pixel_values, scb_pixel_values[:, 0:1, :, :], shd_pixel_values[:, 0:1, :, :]
 
      
     def __len__(self):
@@ -202,13 +231,14 @@ class MultiIlluminationDataset(Dataset):
 
     def __getitem__(self, idx):
         
-        pixel_values, depth_pixel_values, normal_pixel_values, alb_pixel_values, scb_pixel_values = self.get_batch(idx)
+        pixel_values, depth_pixel_values, normal_pixel_values, alb_pixel_values, scb_pixel_values, shd_pixel_values = self.get_batch(idx)
         
-        sample = dict(pixel_values=pixel_values,
-                    depth_pixel_values=depth_pixel_values,
-                    normal_pixel_values=normal_pixel_values,
-                    alb_pixel_values=alb_pixel_values,
-                    scb_pixel_values=scb_pixel_values,
+        sample = dict(pixel_values=pixel_values.to(dtype=self.weight_dtype),
+                    depth_pixel_values=depth_pixel_values.to(dtype=self.weight_dtype),
+                    normal_pixel_values=normal_pixel_values.to(dtype=self.weight_dtype),
+                    alb_pixel_values=alb_pixel_values.to(dtype=self.weight_dtype),
+                    scb_pixel_values=scb_pixel_values.to(dtype=self.weight_dtype),
+                    shd_pixel_values=shd_pixel_values.to(dtype=self.weight_dtype),
                     )
         return sample
 
@@ -220,29 +250,32 @@ if __name__ == "__main__":
 
     for i in range(1):
         idx = np.random.randint(len(dataset))
-        pixel_values, depth_pixel_values, normal_pixel_values, alb_pixel_values, scb_pixel_values = dataset.get_batch(idx)
+        pixel_values, depth_pixel_values, normal_pixel_values, alb_pixel_values, scb_pixel_values, shd_pixel_values = dataset.get_batch(idx)
 
     print(pixel_values.shape)
     print(depth_pixel_values.shape)
     print(normal_pixel_values.shape)
     print(alb_pixel_values.shape)
     print(scb_pixel_values.shape)
+    print(shd_pixel_values.shape)
 
-    save_array_as_image((pixel_values[0]+1)*127.5, "/sdb5/DiffusionMaskRelight/outputs/rgb_01.png")
-    save_array_as_image((pixel_values[-1]+1)*127.5, "/sdb5/DiffusionMaskRelight/outputs/rgb_10.png")
+    save_array_as_image(pixel_values[0]*255, "/sdb5/DiffusionMaskRelight/outputs/rgb_01.png")
+    save_array_as_image(pixel_values[-1]*255, "/sdb5/DiffusionMaskRelight/outputs/rgb_10.png")
 
-    save_array_as_image_depth((depth_pixel_values[0]+1)*127.5, "/sdb5/DiffusionMaskRelight/outputs/dep_01.png")
-    save_array_as_image_depth((depth_pixel_values[-1]+1)*127.5, "/sdb5/DiffusionMaskRelight/outputs/dep_10.png")
+    save_array_as_image_depth(depth_pixel_values[0]*255, "/sdb5/DiffusionMaskRelight/outputs/dep_01.png")
+    save_array_as_image_depth(depth_pixel_values[-1]*255, "/sdb5/DiffusionMaskRelight/outputs/dep_10.png")
     
-    save_array_as_image((normal_pixel_values[0]+1)*127.5, "/sdb5/DiffusionMaskRelight/outputs/nrm_01.png")
-    save_array_as_image((normal_pixel_values[-1]+1)*127.5, "/sdb5/DiffusionMaskRelight/outputs/nrm_10.png")
+    save_array_as_image(normal_pixel_values[0]*255, "/sdb5/DiffusionMaskRelight/outputs/nrm_01.png")
+    save_array_as_image(normal_pixel_values[-1]*255, "/sdb5/DiffusionMaskRelight/outputs/nrm_10.png")
 
-    save_array_as_image((alb_pixel_values[0]+1)*127.5, "/sdb5/DiffusionMaskRelight/outputs/alb_01.png")
-    save_array_as_image((alb_pixel_values[-1]+1)*127.5, "/sdb5/DiffusionMaskRelight/outputs/alb_10.png")
+    save_array_as_image(alb_pixel_values[0]*255, "/sdb5/DiffusionMaskRelight/outputs/alb_01.png")
+    save_array_as_image(alb_pixel_values[-1]*255, "/sdb5/DiffusionMaskRelight/outputs/alb_10.png")
 
-    save_array_as_image_depth((scb_pixel_values[0]+1)*127.5, "/sdb5/DiffusionMaskRelight/outputs/scb_01.png")
-    save_array_as_image_depth((scb_pixel_values[-1]+1)*127.5, "/sdb5/DiffusionMaskRelight/outputs/scb_10.png")
+    save_array_as_image_depth(scb_pixel_values[0]*255, "/sdb5/DiffusionMaskRelight/outputs/scb_01.png")
+    save_array_as_image_depth(scb_pixel_values[-1]*255, "/sdb5/DiffusionMaskRelight/outputs/scb_10.png")
 
+    save_array_as_image_depth(shd_pixel_values[0]*255, "/sdb5/DiffusionMaskRelight/outputs/shd_01.png")
+    save_array_as_image_depth(shd_pixel_values[-1]*255, "/sdb5/DiffusionMaskRelight/outputs/shd_10.png")
 
     # dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, num_workers=1,)
     # # dataloader = torch.utils.data.DataLoader(dataset, batch_size=4, num_workers=16,)
