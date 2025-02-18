@@ -40,4 +40,4 @@ INFO:accelerate.checkpointing:Sampler state for dataloader 0 saved in /sdb5/outp
 INFO:accelerate.checkpointing:Gradient scaler state saved in /sdb5/output_3/checkpoint-1000/scaler.pt
 INFO:accelerate.checkpointing:Random states saved in /sdb5/output_3/checkpoint-1000/random_states_0.pkl
 INFO:__main__:Saved state to /sdb5/output_3/checkpoint-1000
-Steps:  11%|█████▎                                           | 218/2000 [54:22<7:20:48, 14.84s/it, lr=2.23e-5, step_loss=0.0303]
+Steps:  11%|█████▌                                           | 226/2000 [56:15<7:29:52, 15.22s/it, lr=2.21e-5, step_loss=0.0287]

@@ -92,7 +92,7 @@ python dataloader.py -p data/ -s lego
 
 ### Training
 
-- This repo contains three training code: (1) `train_svd.py` for fine-tuning stable video diffusion. (2)`train_svd_relight.py` for fine-tuning MIT datasets. (3)`train_svd_relight_syn.py` for fine-tuning synthetic datasets.
+- This repo contains three training code: (1) `train_svd.py` for fine-tuning stable video diffusion. (2)`train_svd_relight.py` for fine-tuning MIT datasets, this code contains both `vae_trainable` and `unet`. The idea for `vae_trainable` is to refine the estimation of shading. (3)`train_svd_relight_syn.py` for fine-tuning synthetic datasets, this code has no trainable vae but only pure `unet`.
 
 train MIT datasets
 ```python
