@@ -1,0 +1,26 @@
+INFO:__main__:***** Running training *****
+INFO:__main__:  Num examples = 985
+INFO:__main__:  Num Epochs = 100
+INFO:__main__:  Instantaneous batch size per device = 1
+INFO:__main__:  Total train batch size (w. parallel, distributed & accumulation) = 16
+INFO:__main__:  Gradient Accumulation steps = 16
+INFO:__main__:  Total optimization steps = 6200
+Steps:   8%|███████████████                                                                                                                                                                            | 500/6200 [1:29:03<16:37:12, 10.50s/it, lr=2.99e-5, step_loss=0.404]INFO:__main__:5 checkpoints already exist, removing 1 checkpoints
+VAE precision: torch.float16
+UNet precision: torch.float32
+Trainable VAE precision: torch.float32
+Optimizer dtype: torch.float32
+pixel_values dtype: torch.float32
+INFO:__main__:removing checkpoints: checkpoint-200
+INFO:accelerate.accelerator:Saving current state to /sdb5/output_2/checkpoint-500
+Configuration saved in /sdb5/output_2/checkpoint-500/unet/config.json
+Model weights saved in /sdb5/output_2/checkpoint-500/unet/diffusion_pytorch_model.safetensors
+Configuration saved in /sdb5/output_2/checkpoint-500/vae/config.json
+Model weights saved in /sdb5/output_2/checkpoint-500/vae/diffusion_pytorch_model.safetensors
+INFO:accelerate.checkpointing:Optimizer state saved in /sdb5/output_2/checkpoint-500/optimizer.bin
+INFO:accelerate.checkpointing:Scheduler state saved in /sdb5/output_2/checkpoint-500/scheduler.bin
+INFO:accelerate.checkpointing:Sampler state for dataloader 0 saved in /sdb5/output_2/checkpoint-500/sampler.bin
+INFO:accelerate.checkpointing:Gradient scaler state saved in /sdb5/output_2/checkpoint-500/scaler.pt
+INFO:accelerate.checkpointing:Random states saved in /sdb5/output_2/checkpoint-500/random_states_0.pkl
+INFO:__main__:Saved state to /sdb5/output_2/checkpoint-500
+Steps:  16%|█████████████████████████████▉                                                                                                                                                             | 992/6200 [2:58:12<11:36:08,  8.02s/it, lr=2.95e-5, step_loss=0.376]

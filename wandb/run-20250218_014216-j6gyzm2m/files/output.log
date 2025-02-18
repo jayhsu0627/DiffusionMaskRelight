@@ -1,0 +1,25 @@
+INFO:__main__:***** Running training *****
+INFO:__main__:  Num examples = 217
+INFO:__main__:  Num Epochs = 200
+INFO:__main__:  Instantaneous batch size per device = 1
+INFO:__main__:  Total train batch size (w. parallel, distributed & accumulation) = 16
+INFO:__main__:  Gradient Accumulation steps = 16
+INFO:__main__:  Total optimization steps = 2800
+Resuming from checkpoint checkpoint-800
+INFO:accelerate.accelerator:Loading states from /sdb5/output_3/checkpoint-800
+Traceback (most recent call last):
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight_syn.py", line 1501, in <module>
+    main()
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight_syn.py", line 1126, in main
+    accelerator.load_state(os.path.join(args.output_dir, path))
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/accelerate/accelerator.py", line 3223, in load_state
+    hook(models, input_dir)
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight_syn.py", line 871, in load_model_hook
+    load_model = UNetSpatioTemporalConditionModel.from_pretrained(input_dir, subfolder="unet")
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/huggingface_hub/utils/_validators.py", line 114, in _inner_fn
+    return fn(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/diffusers/models/modeling_utils.py", line 901, in from_pretrained
+    unexpected_keys = load_model_dict_into_meta(
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/diffusers/models/model_loading_utils.py", line 230, in load_model_dict_into_meta
+    raise ValueError(
+ValueError: Cannot load /sdb5/output_3/checkpoint-800  because conv_in.weight expected shape torch.Size([320, 8, 3, 3]), but got torch.Size([320, 28, 3, 3]). If you want to instead overwrite randomly initialized weights, please make sure to pass both `low_cpu_mem_usage=False` and `ignore_mismatched_sizes=True`. For more information, see also: https://github.com/huggingface/diffusers/issues/1619#issuecomment-1345604389 as an example.

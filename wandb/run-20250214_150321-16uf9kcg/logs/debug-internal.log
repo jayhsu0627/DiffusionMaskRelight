@@ -1,0 +1,16 @@
+{"time":"2025-02-14T15:03:21.918338892Z","level":"INFO","msg":"stream: starting","core version":"0.19.6","symlink path":"/sdb5/DiffusionMaskRelight/wandb/run-20250214_150321-16uf9kcg/logs/debug-core.log"}
+{"time":"2025-02-14T15:03:22.020808754Z","level":"INFO","msg":"created new stream","id":"16uf9kcg"}
+{"time":"2025-02-14T15:03:22.020843213Z","level":"INFO","msg":"stream: started","id":"16uf9kcg"}
+{"time":"2025-02-14T15:03:22.020892736Z","level":"INFO","msg":"sender: started","stream_id":"16uf9kcg"}
+{"time":"2025-02-14T15:03:22.021436492Z","level":"INFO","msg":"handler: started","stream_id":"16uf9kcg"}
+{"time":"2025-02-14T15:03:22.020872996Z","level":"INFO","msg":"writer: Do: started","stream_id":"16uf9kcg"}
+{"time":"2025-02-14T15:03:22.115576004Z","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-02-14T15:52:43.689098742Z","level":"INFO","msg":"api: retrying HTTP error","status":500,"url":"https://api.wandb.ai/files/sjxu_gamma/DiffSVD_Relight/16uf9kcg/file_stream","body":"{\"error\":\"context deadline exceeded\"}"}
+{"time":"2025-02-14T16:16:30.430903425Z","level":"INFO","msg":"stream: closing","id":"16uf9kcg"}
+{"time":"2025-02-14T16:16:30.430934784Z","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-02-14T16:16:30.431752096Z","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-02-14T16:16:30.862900957Z","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-02-14T16:16:30.973767695Z","level":"INFO","msg":"handler: closed","stream_id":"16uf9kcg"}
+{"time":"2025-02-14T16:16:30.973792871Z","level":"INFO","msg":"writer: Close: closed","stream_id":"16uf9kcg"}
+{"time":"2025-02-14T16:16:30.973835183Z","level":"INFO","msg":"sender: closed","stream_id":"16uf9kcg"}
+{"time":"2025-02-14T16:16:30.973859264Z","level":"INFO","msg":"stream: closed","id":"16uf9kcg"}

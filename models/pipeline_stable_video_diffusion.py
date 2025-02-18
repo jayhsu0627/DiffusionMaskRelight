@@ -492,7 +492,9 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
         # ===== added part =====
         # image was -1 to 1
-        depths, normals, albedos, scribbles = g_buffer
+        # depths, normals, albedos, scribbles = g_buffer
+        rgbs, depths, normals, albedos, scribbles = g_buffer
+
         # 2nd, repeat 1-ch to 3-ch for depth and scribbles
         
         depths_exp = depths.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels
@@ -503,22 +505,30 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         # albedos = (albedos+1)/2
         # scribbles_exp = (scribbles_exp+1)/2
 
+
         # 3rd, convert images to latent space then concatenate
-        
-        enc_depth = self.tensor_to_vae_latent(depths_exp, self.vae)
-        enc_nrm = self.tensor_to_vae_latent(normals, self.vae)
-        enc_alb = self.tensor_to_vae_latent(albedos, self.vae)
-        enc_scb = self.tensor_to_vae_latent(scribbles_exp, self.vae)
+        with torch.no_grad():
+
+            enc_rgb = self.tensor_to_vae_latent(rgbs, self.vae)
+            enc_depth = self.tensor_to_vae_latent(depths_exp, self.vae)
+            enc_nrm = self.tensor_to_vae_latent(normals, self.vae)
+            enc_alb = self.tensor_to_vae_latent(albedos, self.vae)
+            enc_scb = self.tensor_to_vae_latent(scribbles_exp, self.vae)
         
         if self.do_classifier_free_guidance:
             negative_image_embeddings = torch.zeros_like(enc_depth)
+            enc_rgb = torch.cat([negative_image_embeddings, enc_rgb])
             enc_depth = torch.cat([negative_image_embeddings, enc_depth])
             enc_nrm = torch.cat([negative_image_embeddings, enc_nrm])
             enc_alb = torch.cat([negative_image_embeddings, enc_alb])
             enc_scb = torch.cat([negative_image_embeddings, enc_scb])
 
         add_latents = torch.cat([enc_depth, enc_nrm, enc_alb, enc_scb], dim=2)
-        
+        # add_latents = torch.cat([enc_rgb, enc_depth, enc_nrm, enc_alb, enc_scb], dim=2)
+
+        # 🚀 Free memory after use
+        del enc_rgb, enc_depth, enc_nrm, enc_alb, enc_scb
+
         # print(image_latents.shape)
         # print(add_latents.shape)
         # ===== added part =====
@@ -587,7 +597,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
                 # latent_model_input = torch.cat([latent_model_input, image_latents], dim=2)
 
                 # ===== added part =====
-                # print(latent_model_input.shape)
+                print(latent_model_input.shape, image_latents.shape, add_latents.shape)
                 latent_model_input = torch.cat([latent_model_input, image_latents, add_latents], dim=2)
                 # print(image_latents.shape)
                 # print(add_latents.shape)
@@ -596,13 +606,14 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
                 # ===== added part =====
 
                 # predict the noise residual
-                noise_pred = self.unet(
-                    latent_model_input,
-                    t,
-                    encoder_hidden_states=image_embeddings,
-                    added_time_ids=added_time_ids,
-                    return_dict=False,
-                )[0]
+                with torch.no_grad():
+                    noise_pred = self.unet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=image_embeddings,
+                        added_time_ids=added_time_ids,
+                        return_dict=False,
+                    )[0]
 
                 # perform guidance
                 if self.do_classifier_free_guidance:

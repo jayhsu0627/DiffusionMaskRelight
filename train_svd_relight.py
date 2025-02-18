@@ -67,6 +67,7 @@ from torchvision import transforms
 import kornia
 import imageio.v3 as iio
 from copy import deepcopy
+from lpips import LPIPS
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.24.0.dev0")
@@ -550,7 +551,7 @@ def parse_args():
     parser.add_argument(
         "--checkpoints_total_limit",
         type=int,
-        default=2,
+        default=5,
         help=("Max number of checkpoints to store."),
     )
     parser.add_argument(
@@ -583,6 +584,16 @@ def parse_args():
             "path to the video folder"
         ),
     )
+
+    parser.add_argument(
+        "--mse_weight",
+        type=int,
+        default=0.4,
+        help=(
+            "path to the video folder"
+        ),
+    )
+
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -717,6 +728,8 @@ def main():
         variant="fp16"
     )
 
+    lpips_vgg = LPIPS(net="vgg").cuda()
+
     @torch.no_grad()
     def modify_unet_input(unet):
         print('modify_unet_input in progress:', str(8+4*4), unet.conv_in.in_channels)
@@ -798,15 +811,48 @@ def main():
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+
+        # def save_model_hook(models, weights, output_dir):
+        #     if args.use_ema:
+        #         ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
+
+        #     for i, model in enumerate(models):
+        #         model.save_pretrained(os.path.join(output_dir, "unet"))
+
+        #         # make sure to pop weight so that corresponding model is not saved again
+        #         weights.pop()
         def save_model_hook(models, weights, output_dir):
             if args.use_ema:
                 ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
 
             for i, model in enumerate(models):
-                model.save_pretrained(os.path.join(output_dir, "unet"))
+                if isinstance(model, UNetSpatioTemporalConditionModel):
+                    model.save_pretrained(os.path.join(output_dir, "unet"))
+                elif isinstance(model, AutoencoderKLTemporalDecoder):
+                    model.save_pretrained(os.path.join(output_dir, "vae"))
 
-                # make sure to pop weight so that corresponding model is not saved again
+                # Ensure weights are not saved twice
                 weights.pop()
+
+        # def load_model_hook(models, input_dir):
+        #     if args.use_ema:
+        #         load_model = EMAModel.from_pretrained(os.path.join(
+        #             input_dir, "unet_ema"), UNetSpatioTemporalConditionModel)
+        #         ema_unet.load_state_dict(load_model.state_dict())
+        #         ema_unet.to(accelerator.device)
+        #         del load_model
+
+        #     for i in range(len(models)):
+        #         # pop models so that they are not loaded again
+        #         model = models.pop()
+
+        #         # load diffusers style into model
+        #         load_model = UNetSpatioTemporalConditionModel.from_pretrained(
+        #             input_dir, subfolder="unet")
+        #         model.register_to_config(**load_model.config)
+
+        #         model.load_state_dict(load_model.state_dict())
+        #         del load_model
 
         def load_model_hook(models, input_dir):
             if args.use_ema:
@@ -817,16 +863,21 @@ def main():
                 del load_model
 
             for i in range(len(models)):
-                # pop models so that they are not loaded again
                 model = models.pop()
 
-                # load diffusers style into model
-                load_model = UNetSpatioTemporalConditionModel.from_pretrained(
-                    input_dir, subfolder="unet")
-                model.register_to_config(**load_model.config)
+                # Check which model we are loading
+                if isinstance(model, UNetSpatioTemporalConditionModel):
+                    load_model = UNetSpatioTemporalConditionModel.from_pretrained(input_dir, subfolder="unet")
+                elif isinstance(model, AutoencoderKLTemporalDecoder):
+                    load_model = AutoencoderKLTemporalDecoder.from_pretrained(input_dir, subfolder="vae")
+                else:
+                    continue  # Skip if it's not VAE or UNet
 
+                # Register the model
+                model.register_to_config(**load_model.config)
                 model.load_state_dict(load_model.state_dict())
-                del load_model
+                model.to(accelerator.device)
+                del load_model  # Free memory
 
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
@@ -868,18 +919,37 @@ def main():
         else:
             param.requires_grad = False
 
-    # Freeze early layers and fine-tune the last few layers
+    # # Freeze early layers and fine-tune the last few layers
+    # for name, param in vae_trainable.named_parameters():
+    #     if "encoder.down_block." in name or "decoder.up_block." in name:
+    #         # Freeze early layers
+    #         if int(name.split('.')[2]) < 2:  # Adjust the layer index as needed
+    #             param.requires_grad = False
+    #         else:
+    #             param.requires_grad = True
+    #     else:
+    #         parameters_list.append(param)
+    #         param.requires_grad = True
+
     for name, param in vae_trainable.named_parameters():
-        if "encoder.down_block." in name or "decoder.up_block." in name:
-            # Freeze early layers
-            if int(name.split('.')[2]) < 2:  # Adjust the layer index as needed
-                param.requires_grad = False
-            else:
-                param.requires_grad = True
-        else:
+        # Decoder path - crucial for shading reconstruction
+        if any([
+            'decoder.up_blocks.' in name,  # Upsampling path
+            'decoder.mid_block.' in name,  # Bottleneck features
+            'decoder.conv_out.' in name,   # Final output generation
+            
+            # Encoder path - important for initial feature extraction
+            'encoder.down_blocks.' in name,
+            'encoder.mid_block.' in name,
+            
+            # Skip bottleneck layers for latent processing
+            'quant_conv.' in name,
+        ]):
             parameters_list.append(param)
             param.requires_grad = True
-    
+        else:
+            param.requires_grad = False
+
     optimizer = optimizer_cls(
         parameters_list,
         lr=args.learning_rate,
@@ -1107,7 +1177,7 @@ def main():
 
                     # print(pixel_values.shape)
                     # print(depths.shape)
-                    # print(normals.shape)
+                    # print(normals. shape)
                     # print(albedos.shape)
                     # print(scribbles.shape)
 
@@ -1117,7 +1187,7 @@ def main():
 
                     # Add encoded images to trainable vae
 
-                    mask_blended = blend_tensors(albedos, scribbles, blend_ratio=0.5).to(weight_dtype).to(accelerator.device, non_blocking=True)
+                    mask_blended = blend_tensors(albedos, scribbles, blend_ratio=(1-args.mse_weight)).to(weight_dtype).to(accelerator.device, non_blocking=True)
                     mask_blended = mask_blended.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels                
                     mask_blended = rearrange(mask_blended, "b f c h w -> (b f) c h w")
 
@@ -1141,6 +1211,7 @@ def main():
                     recon_shd = recon_shd[:, :, 0:1, :, :]
 
                     shd_loss = F.mse_loss(recon_shd, shading_gt, reduction='mean')
+                    shd_loss = (1-args.mse_weight)* lpips_vgg(recon_shd[0], shading_gt[0]).mean() + args.mse_weight * F.mse_loss(recon_shd, shading_gt, reduction='mean')
 
                     depths_exp = depths.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels
                     # scribbles_exp = scribbles.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels

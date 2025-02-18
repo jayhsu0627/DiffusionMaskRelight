@@ -5,9 +5,91 @@ INFO:__main__:  Instantaneous batch size per device = 1
 INFO:__main__:  Total train batch size (w. parallel, distributed & accumulation) = 16
 INFO:__main__:  Gradient Accumulation steps = 16
 INFO:__main__:  Total optimization steps = 6200
-Steps:   1%|▊                                                                                                                                                       | 32/6200 [07:13<22:04:50, 12.89s/it, lr=1.92e-6, step_loss=1.05]
+Steps:   8%|███████████▉                                                                                                                                        | 500/6200 [1:47:00<19:54:44, 12.58s/it, lr=2.99e-5, step_loss=0.243]INFO:accelerate.accelerator:Saving current state to /sdb5/output_2/checkpoint-500
 VAE precision: torch.float16
 UNet precision: torch.float32
 Trainable VAE precision: torch.float32
 Optimizer dtype: torch.float32
 pixel_values dtype: torch.float32
+Configuration saved in /sdb5/output_2/checkpoint-500/unet/config.json
+Model weights saved in /sdb5/output_2/checkpoint-500/unet/diffusion_pytorch_model.safetensors
+Configuration saved in /sdb5/output_2/checkpoint-500/unet/config.json
+Model weights saved in /sdb5/output_2/checkpoint-500/unet/diffusion_pytorch_model.safetensors
+INFO:accelerate.checkpointing:Optimizer state saved in /sdb5/output_2/checkpoint-500/optimizer.bin
+INFO:accelerate.checkpointing:Scheduler state saved in /sdb5/output_2/checkpoint-500/scheduler.bin
+INFO:accelerate.checkpointing:Sampler state for dataloader 0 saved in /sdb5/output_2/checkpoint-500/sampler.bin
+INFO:accelerate.checkpointing:Gradient scaler state saved in /sdb5/output_2/checkpoint-500/scaler.pt
+INFO:accelerate.checkpointing:Random states saved in /sdb5/output_2/checkpoint-500/random_states_0.pkl
+INFO:__main__:Saved state to /sdb5/output_2/checkpoint-500
+Steps:  16%|███████████████████████▋                                                                                                                           | 1000/6200 [3:14:17<13:49:53,  9.58s/it, lr=2.94e-5, step_loss=0.195]INFO:accelerate.accelerator:Saving current state to /sdb5/output_2/checkpoint-1000
+Configuration saved in /sdb5/output_2/checkpoint-1000/unet/config.json
+Model weights saved in /sdb5/output_2/checkpoint-1000/unet/diffusion_pytorch_model.safetensors
+Configuration saved in /sdb5/output_2/checkpoint-1000/unet/config.json
+Model weights saved in /sdb5/output_2/checkpoint-1000/unet/diffusion_pytorch_model.safetensors
+INFO:accelerate.checkpointing:Optimizer state saved in /sdb5/output_2/checkpoint-1000/optimizer.bin
+INFO:accelerate.checkpointing:Scheduler state saved in /sdb5/output_2/checkpoint-1000/scheduler.bin
+INFO:accelerate.checkpointing:Sampler state for dataloader 0 saved in /sdb5/output_2/checkpoint-1000/sampler.bin
+INFO:accelerate.checkpointing:Gradient scaler state saved in /sdb5/output_2/checkpoint-1000/scaler.pt
+INFO:accelerate.checkpointing:Random states saved in /sdb5/output_2/checkpoint-1000/random_states_0.pkl
+INFO:__main__:Saved state to /sdb5/output_2/checkpoint-1000
+Steps:  24%|███████████████████████████████████▌                                                                                                               | 1500/6200 [4:34:15<12:34:38,  9.63s/it, lr=2.78e-5, step_loss=0.182]INFO:__main__:2 checkpoints already exist, removing 1 checkpoints
+INFO:__main__:removing checkpoints: checkpoint-500
+INFO:accelerate.accelerator:Saving current state to /sdb5/output_2/checkpoint-1500
+Configuration saved in /sdb5/output_2/checkpoint-1500/unet/config.json
+Model weights saved in /sdb5/output_2/checkpoint-1500/unet/diffusion_pytorch_model.safetensors
+Configuration saved in /sdb5/output_2/checkpoint-1500/unet/config.json
+Model weights saved in /sdb5/output_2/checkpoint-1500/unet/diffusion_pytorch_model.safetensors
+INFO:accelerate.checkpointing:Optimizer state saved in /sdb5/output_2/checkpoint-1500/optimizer.bin
+INFO:accelerate.checkpointing:Scheduler state saved in /sdb5/output_2/checkpoint-1500/scheduler.bin
+INFO:accelerate.checkpointing:Sampler state for dataloader 0 saved in /sdb5/output_2/checkpoint-1500/sampler.bin
+INFO:accelerate.checkpointing:Gradient scaler state saved in /sdb5/output_2/checkpoint-1500/scaler.pt
+INFO:accelerate.checkpointing:Random states saved in /sdb5/output_2/checkpoint-1500/random_states_0.pkl
+INFO:__main__:Saved state to /sdb5/output_2/checkpoint-1500
+Steps:  32%|███████████████████████████████████████████████▍                                                                                                   | 2000/6200 [5:54:15<11:09:44,  9.57s/it, lr=2.52e-5, step_loss=0.137]INFO:__main__:2 checkpoints already exist, removing 1 checkpoints
+INFO:__main__:removing checkpoints: checkpoint-1000
+INFO:accelerate.accelerator:Saving current state to /sdb5/output_2/checkpoint-2000
+Configuration saved in /sdb5/output_2/checkpoint-2000/unet/config.json
+Model weights saved in /sdb5/output_2/checkpoint-2000/unet/diffusion_pytorch_model.safetensors
+Configuration saved in /sdb5/output_2/checkpoint-2000/unet/config.json
+Model weights saved in /sdb5/output_2/checkpoint-2000/unet/diffusion_pytorch_model.safetensors
+INFO:accelerate.checkpointing:Optimizer state saved in /sdb5/output_2/checkpoint-2000/optimizer.bin
+INFO:accelerate.checkpointing:Scheduler state saved in /sdb5/output_2/checkpoint-2000/scheduler.bin
+INFO:accelerate.checkpointing:Sampler state for dataloader 0 saved in /sdb5/output_2/checkpoint-2000/sampler.bin
+INFO:accelerate.checkpointing:Gradient scaler state saved in /sdb5/output_2/checkpoint-2000/scaler.pt
+INFO:accelerate.checkpointing:Random states saved in /sdb5/output_2/checkpoint-2000/random_states_0.pkl
+INFO:__main__:Saved state to /sdb5/output_2/checkpoint-2000
+Steps:  38%|███████████████████████████████████████████████████████▋                                                                                           | 2349/6200 [6:50:26<10:15:43,  9.59s/it, lr=2.29e-5, step_loss=0.324]Traceback (most recent call last):
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight.py", line 1420, in <module>
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight.py", line 1245, in main
+    # Conditioning dropout to support classifier-free guidance during inference. For more details
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/accelerate/utils/operations.py", line 819, in forward
+    return model_forward(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/accelerate/utils/operations.py", line 807, in __call__
+    return convert_to_fp32(self.model_forward(*args, **kwargs))
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/amp/autocast_mode.py", line 44, in decorate_autocast
+    return func(*args, **kwargs)
+  File "/sdb5/DiffusionMaskRelight/models/unet_spatio_temporal_condition.py", line 446, in forward
+    sample, res_samples = downsample_block(
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/diffusers/models/unets/unet_3d_blocks.py", line 1316, in forward
+    hidden_states = attn(
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/diffusers/models/transformers/transformer_temporal.py", line 353, in forward
+    hidden_states = block(
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/diffusers/models/attention.py", line 586, in forward
+    if hidden_states.ndim == 4:
+KeyboardInterrupt

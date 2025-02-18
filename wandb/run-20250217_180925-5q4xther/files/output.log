@@ -1,0 +1,42 @@
+INFO:__main__:***** Running training *****
+INFO:__main__:  Num examples = 217
+INFO:__main__:  Num Epochs = 100
+INFO:__main__:  Instantaneous batch size per device = 1
+INFO:__main__:  Total train batch size (w. parallel, distributed & accumulation) = 16
+INFO:__main__:  Gradient Accumulation steps = 16
+INFO:__main__:  Total optimization steps = 1400
+Steps:   0%|                                                                                                                                                                                                          | 0/1400 [00:00<?, ?it/s]Traceback (most recent call last):
+VAE precision: torch.float16
+UNet precision: torch.float32
+Optimizer dtype: torch.float32
+pixel_values dtype: torch.float32
+torch.Size([1, 12, 3, 256, 256])
+torch.Size([1, 12, 1, 256, 256])
+torch.Size([1, 12, 3, 256, 256])
+torch.Size([1, 12, 3, 256, 256])
+torch.Size([1, 12, 1, 256, 256])
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight_syn.py", line 1497, in <module>
+    main()
+  File "/sdb5/DiffusionMaskRelight/train_svd_relight_syn.py", line 1322, in main
+    model_pred = unet(
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/accelerate/utils/operations.py", line 819, in forward
+    return model_forward(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/accelerate/utils/operations.py", line 807, in __call__
+    return convert_to_fp32(self.model_forward(*args, **kwargs))
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/amp/autocast_mode.py", line 44, in decorate_autocast
+    return func(*args, **kwargs)
+  File "/sdb5/DiffusionMaskRelight/models/unet_spatio_temporal_condition.py", line 440, in forward
+    sample = self.conv_in(sample)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/conv.py", line 554, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+  File "/opt/conda/envs/DiffLight/lib/python3.10/site-packages/torch/nn/modules/conv.py", line 549, in _conv_forward
+    return F.conv2d(
+RuntimeError: Given groups=1, weight of size [320, 24, 3, 3], expected input[12, 28, 32, 32] to have 24 channels, but got 28 channels instead

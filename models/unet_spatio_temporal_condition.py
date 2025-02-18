@@ -71,7 +71,8 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
     def __init__(
         self,
         sample_size: Optional[int] = None,
-        in_channels: int = 24, # 8 + 16 additional (latents+conditional) + (depths, normals, albedos, scribbles)
+        # in_channels: int = 24, # 8 + 16 additional (latents+conditional) + (depths, normals, albedos, scribbles)
+        in_channels: int = 28, # 8 + 20 additional (latents+conditional) + (rgbs, depths, normals, albedos, scribbles)
         out_channels: int = 4,
         down_block_types: Tuple[str] = (
             "CrossAttnDownBlockSpatioTemporal",

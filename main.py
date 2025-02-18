@@ -543,12 +543,15 @@ def export_to_gif(frames, output_gif_path, fps):
 
 def tensor_to_vae_latent(t, vae):
     video_length = t.shape[1]
-    print(t.shape)
+
     t = rearrange(t, "b f c h w -> (b f) c h w")
-    latents = vae.encode(t).latent_dist.sample()
+    with torch.no_grad():
+        latents = vae.encode(t).latent_dist.sample()
+        
+    del t
     latents = rearrange(latents, "(b f) c h w -> b f c h w", f=video_length)
     latents = latents * vae.config.scaling_factor
-
+    torch.cuda.empty_cache()  # 🚀 Free GPU memory
     return latents
 
 # def latent_to_tensor(latents, vae, frames=2):
@@ -615,23 +618,22 @@ def tensor_to_vae_latent(t, vae):
 #     t = torch.cat(decoded_frames, dim=1)
 #     return t
 
-def latent_to_tensor(latents, vae):
+def latent_to_tensor(latents, vae, frames=2):
+
     video_length = latents.shape[1]
-    
+    # print(vae.config.scaling_factor)
+
     latents = latents / vae.config.scaling_factor
     latents = rearrange(latents, "b f c h w -> (b f) c h w")
-
-    decoded_frames = []
     
-    for i in range(video_length):  # Decode one frame at a time to reduce memory usage
-        frame_latent = latents[i].unsqueeze(0)  # Process one frame at a time
-        frame = vae.decode(frame_latent).sample
-        decoded_frames.append(frame)
-
-    t = torch.cat(decoded_frames, dim=0)  # Reassemble frames
+    with torch.no_grad():
+        t = vae.decode(latents, num_frames = frames).sample
+    
+    del latents  # 🚀 Free `latents` after decoding
     t = rearrange(t, "(b f) c h w -> b f c h w", f=video_length)
-
+    torch.cuda.empty_cache()  # 🚀 Free GPU memory
     return t
+
 
 def save_latents_as_images(latents, output_dir):
     """
@@ -980,6 +982,13 @@ def parse_args():
         help="use weight for unet block",
     )
     parser.add_argument(
+        "--pretrain_vae",
+        type=str,
+        default=None,
+        help="use weight for unet block",
+    )
+
+    parser.add_argument(
         "--rank",
         type=int,
         default=128,
@@ -1119,6 +1128,32 @@ def numpy_to_pt(images: np.ndarray) -> torch.FloatTensor:
 def is_all_white(image):
     return np.all(image == 255)
 
+def blend_tensors(rgb_tensor, mask_tensor, blend_ratio=0.5):
+    """
+    Blend RGB tensor with mask tensor to create grayscale output.
+    
+    Parameters:
+    rgb_tensor (torch.Tensor): RGB tensor of shape (B, F, 3, H, W)
+    mask_tensor (torch.Tensor): Mask tensor of shape (B, F, 1, H, W)
+    blend_ratio (float): Ratio for blending (0.0 to 1.0), default is 0.5
+    
+    Returns:
+    torch.Tensor: Blended grayscale tensor of shape (B, F, 1, H, W)
+    """
+    # Convert RGB to grayscale using ITU-R BT.601 conversion
+    # Coefficients: R: 0.299, G: 0.587, B: 0.114
+    rgb_weights = torch.tensor([0.299, 0.587, 0.114]).view(1, 1, 3, 1, 1).to(rgb_tensor.device)
+    rgb_gray = torch.sum(rgb_tensor * rgb_weights, dim=2, keepdim=True)
+    
+    # # Ensure tensors are in float format
+    # rgb_gray = rgb_gray.float()
+    # mask_tensor = mask_tensor.float()
+    
+    # Blend the tensors
+    blended = blend_ratio * rgb_gray + (1 - blend_ratio) * mask_tensor
+    
+    return blended
+
 def main():
 
     args = parse_args()
@@ -1130,7 +1165,8 @@ def main():
     )
     vae = AutoencoderKLTemporalDecoder.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant="fp16")
-    
+
+
     # # Create an instance of the model
     # model = UNetSpatioTemporalConditionModel()
 
@@ -1143,26 +1179,35 @@ def main():
     unet = UNetSpatioTemporalConditionModel.from_pretrained(
         args.pretrained_model_name_or_path if args.pretrain_unet is None else args.pretrain_unet,
         subfolder="unet",
-        low_cpu_mem_usage=False,
-        ignore_mismatched_sizes=True
+        low_cpu_mem_usage=True
     )
-        
+    
+        # ignore_mismatched_sizes=True
+
+    # vae_enc = AutoencoderKLTemporalDecoder.from_pretrained(
+    #     args.pretrained_model_name_or_path  if args.pretrain_vae is None else args.pretrain_vae,
+    #     subfolder="vae")
+
+    print("VAE precision:", next(vae.parameters()).dtype)
+    print("UNet precision:", next(unet.parameters()).dtype)
+    # print("Trainable VAE precision:", next(vae_enc.parameters()).dtype)
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
-    # weight_dtype = torch.float32
-    weight_dtype = torch.bfloat16
+    weight_dtype = torch.float32
+    # weight_dtype = torch.bfloat16
 
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
-    print(weight_dtype)
+    print("weight_dtype:", weight_dtype)
 
     # Move image_encoder and vae to gpu and cast to weight_dtype
     # image_encoder.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
     unet.to(accelerator.device, dtype=weight_dtype)
+    # vae_enc.to(accelerator.device, dtype=weight_dtype)
 
     #controlnet.to(accelerator.device, dtype=weight_dtype)
     # Create EMA for the unet.
@@ -1248,115 +1293,183 @@ def main():
         
         return np.array(numpy_images)
 
-    # Sort and limit the number of image and condition files to 14
-    if output_type == 'rgb':
-        image_files = sorted(os.listdir(preprocessed_dir), key=natural_sort_key)[:24]
-    elif output_type == 'g_biffer':
-        image_files = [file for file in sorted(os.listdir(preprocessed_dir)) if file in ('all_normal.png', 'all_depth.png')]
-    elif output_type == 'concat':
-        image_files = [file for file in sorted(os.listdir(preprocessed_dir)) if file in ('all_normal.png', 'all_depth.png')]
+    # # Sort and limit the number of image and condition files to 14
+    # if output_type == 'rgb':
+    #     image_files = sorted(os.listdir(preprocessed_dir), key=natural_sort_key)[:24]
+    # elif output_type == 'g_biffer':
+    #     image_files = [file for file in sorted(os.listdir(preprocessed_dir)) if file in ('all_normal.png', 'all_depth.png')]
+    # elif output_type == 'concat':
+    #     image_files = [file for file in sorted(os.listdir(preprocessed_dir)) if file in ('all_normal.png', 'all_depth.png')]
 
-    print('here:', image_files)
+    # print('here:', image_files)
 
-    # Load image frames
+    # # Load image frames
     
 
 
-    # numpy_images = np.array([pil_image_to_numpy(Image.open(os.path.join(preprocessed_dir, img))) for img in image_files])
-    numpy_images = load_images_with_depth_processing(preprocessed_dir, image_files)
-    print('numpy_images:', numpy_images.shape)
+    # # numpy_images = np.array([pil_image_to_numpy(Image.open(os.path.join(preprocessed_dir, img))) for img in image_files])
+    # numpy_images = load_images_with_depth_processing(preprocessed_dir, image_files)
+    # print('numpy_images:', numpy_images.shape)
 
 
-    pixel_values = numpy_to_pt(numpy_images).to(weight_dtype).to(
-        accelerator.device, non_blocking=True
-    )
-    pixel_values = pixel_values.unsqueeze(0)
-    print("pixel_values", pixel_values.shape)
-        # else:
-        #     pixel_values = batch["pixel_values"].to(weight_dtype).to(
-        #         accelerator.device, non_blocking=True
-        #     )
-
-    latents = tensor_to_vae_latent(pixel_values, vae).to(weight_dtype).to(
-        accelerator.device, non_blocking=True
-    )
-    # encoded
-    save_generated_images(pixel_values, "/sdb5/DiffusionMaskRelight/outputs/" + str(output_type), "org")
-
-    # latent space
-    save_latents_as_images(latents, "/sdb5/DiffusionMaskRelight/outputs/" + str(output_type))
-
-    # decoded
-
-    recon_pix_values = latent_to_tensor(latents, vae)
-    save_generated_images(recon_pix_values, "/sdb5/DiffusionMaskRelight/outputs/" + str(output_type), "rec")
-
-
-    # # The models need unwrapping because for compatibility in distributed training mode.
-    # pipeline = StableVideoDiffusionPipeline.from_pretrained(
-    #     args.pretrained_model_name_or_path,
-    #     unet=unet,
-    #     image_encoder=image_encoder,
-    #     vae=vae,
-    #     revision=args.revision,
-    #     torch_dtype=weight_dtype,
+    # pixel_values = numpy_to_pt(numpy_images).to(weight_dtype).to(
+    #     accelerator.device, non_blocking=True
     # )
-    # pipeline = pipeline.to(accelerator.device)
+    # pixel_values = pixel_values.unsqueeze(0)
+    # print("pixel_values", pixel_values.shape)
+    #     # else:
+    #     #     pixel_values = batch["pixel_values"].to(weight_dtype).to(
+    #     #         accelerator.device, non_blocking=True
+    #     #     )
 
-    # for batch in test_dataloader:
+    # latents = tensor_to_vae_latent(pixel_values, vae).to(weight_dtype).to(
+    #     accelerator.device, non_blocking=True
+    # )
+    # # encoded
+    # save_generated_images(pixel_values, "/sdb5/DiffusionMaskRelight/outputs/" + str(output_type), "org")
+
+    # # latent space
+    # save_latents_as_images(latents, "/sdb5/DiffusionMaskRelight/outputs/" + str(output_type))
+
+    # # decoded
+
+    # recon_pix_values = latent_to_tensor(latents, vae)
+    # save_generated_images(recon_pix_values, "/sdb5/DiffusionMaskRelight/outputs/" + str(output_type), "rec")
+
+
+    # The models need unwrapping because for compatibility in distributed training mode.
+    pipeline = StableVideoDiffusionPipeline.from_pretrained(
+        args.pretrained_model_name_or_path,
+        unet=unet,
+        image_encoder=image_encoder,
+        vae=vae,
+        revision=args.revision,
+        torch_dtype=weight_dtype,
+    )
+    pipeline = pipeline.to(accelerator.device)
+
+    for batch in test_dataloader:
     
-    #     pixel_values, depths, normals, albedos, scribbles = batch["pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
-    #                                                         batch["depth_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
-    #                                                         batch["normal_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
-    #                                                         batch["alb_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
-    #                                                         batch["scb_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True)
-    #     input_image = pixel_values[:, 0:1, :, :, :][0]
-    #     input_image = (input_image+1)/2
-    #     print("input", input_image.shape)
-    #     video_frames = pipeline(
-    #         input_image[0],
-    #         g_buffer= [depths, normals, albedos, scribbles],
-    #         height=256,
-    #         width=256,
-    #         num_frames= 25,
-    #         decode_chunk_size=8,
-    #         motion_bucket_id=127,
-    #         fps=7,
-    #         noise_aug_strength=0.02,
-    #         generator=generator,
-    #     ).frames[0]
+        # pixel_values, depths, normals, albedos, scribbles = batch["pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+        #                                                     batch["depth_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+        #                                                     batch["normal_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+        #                                                     batch["alb_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+        #                                                     batch["scb_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True)
 
-    #     val_save_dir = os.path.join(
-    #         args.output_dir, "validation_images")
+        pixel_values, depths, normals, albedos, scribbles, shading_gt = batch["pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+                                                                        batch["depth_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+                                                                        batch["normal_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+                                                                        batch["alb_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+                                                                        batch["scb_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+                                                                        batch["shd_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True)
 
-    #     if not os.path.exists(val_save_dir):
-    #         os.makedirs(val_save_dir)
+        input_image = pixel_values[:, 0:1, :, :, :]
+        print(input_image[0].shape)
+        # input_image = (input_image+1)/2
 
-    #     out_file = os.path.join(
-    #         val_save_dir,
-    #         f"val_img_6000_1.mp4",
-    #     )
-    #     out_file_gt = os.path.join(
-    #         val_save_dir,
-    #         f"val_gt_6000_1.mp4",
-    #     )
+        # # 2nd, repeat 1-ch to 3-ch for depth and scribbles
 
-    #     for i in range(25):
-    #         img = video_frames[i]
-    #         video_frames[i] = np.array(img)
-    #     export_to_gif(video_frames, out_file, 8)
+        # # Add encoded images to trainable vae
 
-    #     for i in range(25):
+        # mask_blended = blend_tensors(albedos, scribbles, blend_ratio=0.6).to(weight_dtype).to(accelerator.device, non_blocking=True)
+        # mask_blended = mask_blended.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels                
+        # mask_blended = rearrange(mask_blended, "b f c h w -> (b f) c h w")
+        # mask_blended = F.interpolate(mask_blended, scale_factor=0.5, mode="bilinear", align_corners=False)
+        # mask_blended = rearrange(mask_blended, "(b f) c h w -> b f c h w", f=albedos.shape[1])
 
-    #         img_np = pixel_values[0][i].detach().cpu().numpy()  # Convert to NumPy array
-    #         img_np = np.transpose(img_np, (1, 2, 0))
-    #         img_np = ((img_np + 1) / 2 * 255).astype(np.uint8)
-    #         video_frames[i] = img_np
+        #     # encode (0.5*mask + 0.5*albedo_gray) **3 to improve the 1st ch
+        # mask_latents = tensor_to_vae_latent(mask_blended, vae_enc)
+        #     # decode (0.5*mask + 0.5*albedo_gray) **3 to get the 1st ch
+        # recon_shd = latent_to_tensor(mask_latents, vae_enc, frames = mask_latents.shape[1])
+        
+        # vae_enc.to("cpu")  # Move VAE to CPU after encoding
 
-    #     export_to_gif(video_frames, out_file_gt, 8)
+        # recon_shd = rearrange(recon_shd, "b f c h w -> (b f) c h w")
+        # recon_shd = F.interpolate(recon_shd, scale_factor=2.0, mode="bilinear", align_corners=False)
+        # recon_shd = rearrange(recon_shd, "(b f) c h w -> b f c h w", f=albedos.shape[1])
 
-    #     break
-    #     # concatenate image
+        # shading = recon_shd[:, :, 0:1, :, :]
+
+        # # 🚀 Free memory after use
+        # del mask_latents, mask_blended
+
+        print("input", input_image.shape)
+        video_frames = pipeline(
+            input_image[0],
+            # g_buffer= [depths, normals, albedos, shading],
+            g_buffer= [depths, normals, albedos, scribbles],
+            height=256,
+            width=256,
+            num_frames= 25,
+            decode_chunk_size=8,
+            motion_bucket_id=127,
+            fps=7,
+            noise_aug_strength=0.02,
+            generator=generator,
+        ).frames[0]
+
+        # # 🚀 Free memory after use
+        # del shading
+
+        val_save_dir = os.path.join(
+            args.output_dir, "validation_images")
+
+        if not os.path.exists(val_save_dir):
+            os.makedirs(val_save_dir)
+
+        out_file = os.path.join(
+            val_save_dir,
+            f"val_img_6000_test_old.mp4",
+        )
+        out_file_gt = os.path.join(
+            val_save_dir,
+            f"val_gt_6000_test_old.mp4",
+        )
+
+        for i in range(25):
+            img = video_frames[i]
+            video_frames[i] = np.array(img)
+        export_to_gif(video_frames, out_file, 8)
+        
+        # # recon_shd = recon_shd.squeeze(0).detach().cpu().numpy()
+
+        # video_frames = [0] *25
+        # for i in range(25):
+        #     img_np = recon_shd[0][i].detach().cpu().numpy()  # Convert to NumPy array
+        #     # img_np = np.transpose(img_np, (1, 2, 0))
+        #     img_np = img_np[0]
+        #     if img_np.ndim == 2:  
+        #         img_np = np.stack([img_np] * 3, axis=-1)  # Convert (H, W) → (H, W, 3)
+        #     # print(img_np.shape)
+        #     img_np = (img_np * 255).astype(np.uint8)
+        #     video_frames[i] = img_np
+        # export_to_gif(video_frames, out_file, 8)
+
+        # video_frames = [0] *25
+
+        # for i in range(25):
+        #     img_np = shading_gt[0][i].detach().cpu().numpy()  # Convert to NumPy array
+        #     # img_np = np.transpose(img_np, (1, 2, 0))
+        #     img_np = img_np[0]
+        #     if img_np.ndim == 2:  
+        #         img_np = np.stack([img_np] * 3, axis=-1)  # Convert (H, W) → (H, W, 3)
+        #     # print(img_np.shape)
+
+        #     # img_np = ((img_np + 1) / 2 * 255).astype(np.uint8)
+        #     img_np = (img_np * 255).astype(np.uint8)
+        #     video_frames[i] = img_np
+
+        for i in range(25):
+
+            img_np = pixel_values[0][i].detach().cpu().numpy()  # Convert to NumPy array
+            img_np = np.transpose(img_np, (1, 2, 0))
+            img_np = (img_np * 255).astype(np.uint8)
+            video_frames[i] = img_np
+
+        export_to_gif(video_frames, out_file_gt, 8)
+
+        break
+        # concatenate image
 
 
 if __name__ == "__main__":

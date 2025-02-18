@@ -1,0 +1,16 @@
+{"time":"2025-02-14T16:57:14.287958258Z","level":"INFO","msg":"stream: starting","core version":"0.19.6","symlink path":"/sdb5/DiffusionMaskRelight/wandb/run-20250214_165714-yvppdxob/logs/debug-core.log"}
+{"time":"2025-02-14T16:57:14.391208211Z","level":"INFO","msg":"created new stream","id":"yvppdxob"}
+{"time":"2025-02-14T16:57:14.391258528Z","level":"INFO","msg":"stream: started","id":"yvppdxob"}
+{"time":"2025-02-14T16:57:14.39127963Z","level":"INFO","msg":"writer: Do: started","stream_id":"yvppdxob"}
+{"time":"2025-02-14T16:57:14.391307487Z","level":"INFO","msg":"handler: started","stream_id":"yvppdxob"}
+{"time":"2025-02-14T16:57:14.39191002Z","level":"INFO","msg":"sender: started","stream_id":"yvppdxob"}
+{"time":"2025-02-14T16:57:14.485124875Z","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-02-14T17:53:09.846958249Z","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-02-14T17:53:09.848022085Z","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-02-14T17:53:10.083718056Z","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-02-14T17:53:10.127423983Z","level":"INFO","msg":"handler: operation stats","stats":{}}
+{"time":"2025-02-14T17:53:11.232176668Z","level":"INFO","msg":"stream: closing","id":"yvppdxob"}
+{"time":"2025-02-14T17:53:11.232217434Z","level":"INFO","msg":"handler: closed","stream_id":"yvppdxob"}
+{"time":"2025-02-14T17:53:11.232228105Z","level":"INFO","msg":"writer: Close: closed","stream_id":"yvppdxob"}
+{"time":"2025-02-14T17:53:11.232253614Z","level":"INFO","msg":"sender: closed","stream_id":"yvppdxob"}
+{"time":"2025-02-14T17:53:11.232303545Z","level":"INFO","msg":"stream: closed","id":"yvppdxob"}
