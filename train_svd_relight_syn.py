@@ -33,6 +33,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint
+import torch.profiler
+from torch.profiler import tensorboard_trace_handler
+
 from torch.utils.data import RandomSampler, Subset, DataLoader
 import transformers
 from accelerate import Accelerator
@@ -54,7 +57,8 @@ from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, deprecate, is_wandb_available, load_image
 from diffusers.utils.import_utils import is_xformers_available
 from utils.dataset import MultiIlluminationDataset
-from utils.virtual_dataset import SyncDataset
+# from utils.virtual_dataset import SyncDataset
+from utils.virtual_dataset_preprocess import SyncDataset
 
 # Load the added input_ch unet
 from models.unet_spatio_temporal_condition import UNetSpatioTemporalConditionModel
@@ -87,8 +91,12 @@ def make_train_dataset(args):
 
     # In distributed training, the load_dataset function guarantees that only one local process can concurrently
     # download the dataset.
-    dataset = SyncDataset(args.video_folder,
-                                        frame_size=25, sample_n_frames=12)
+    
+    # dataset = SyncDataset(args.video_folder,
+    #                                     frame_size=25, sample_n_frames=12)
+    
+    dataset = SyncDataset(preprocessed_dir=args.video_folder, max_frames=args.num_n_frames)
+
     return dataset
 
 def make_test_dataset(args):
@@ -336,6 +344,11 @@ def parse_args():
     )
     parser.add_argument(
         "--num_frames",
+        type=int,
+        default=25,
+    )
+    parser.add_argument(
+        "--num_n_frames",
         type=int,
         default=25,
     )
@@ -599,6 +612,8 @@ def parse_args():
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
+        print(f"Using local rank: {args.local_rank} (from {'env' if env_local_rank != -1 else 'args'})")
+        
         args.local_rank = env_local_rank
 
     # default to using the same revision for the non-ema model if not specified
@@ -813,15 +828,15 @@ def main():
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
 
-        # def save_model_hook(models, weights, output_dir):
-        #     if args.use_ema:
-        #         ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
+        def save_model_hook(models, weights, output_dir):
+            if args.use_ema:
+                ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
 
-        #     for i, model in enumerate(models):
-        #         model.save_pretrained(os.path.join(output_dir, "unet"))
+            for i, model in enumerate(models):
+                model.save_pretrained(os.path.join(output_dir, "unet"))
 
-        #         # make sure to pop weight so that corresponding model is not saved again
-        #         weights.pop()
+                # make sure to pop weight so that corresponding model is not saved again
+                weights.pop()
         def save_model_hook(models, weights, output_dir):
             if args.use_ema:
                 ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
@@ -1155,321 +1170,377 @@ def main():
         # vae_trainable.train()
 
         train_loss = 0.0
-        for step, batch in enumerate(train_dataloader):
-            # Skip steps until we reach the resumed step
-            if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
-                if step % args.gradient_accumulation_steps == 0:
-                    progress_bar.update(1)
-                continue
+        with torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA,
+            ],
+            schedule=torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=1),
+            # on_trace_ready=torch.profiler.tensorboard_trace_handler('./log/resnet18'),
+            on_trace_ready=torch.profiler.tensorboard_trace_handler('/fs/gamma-projects/svd_relight/output_test/prof'),
 
-            with accelerator.accumulate(unet):
-            # with accelerator.accumulate(unet), accelerator.accumulate(vae_trainable):
-                with accelerator.autocast():
+            record_shapes=True,
+            profile_memory=True,
+            with_stack=True
+        ) as prof:
 
-                    # first, load images from Relight images, depth, normal, albedo, mask, original images
+            for step, batch in enumerate(train_dataloader):
+                # print(torch.cuda.memory_summary(device=torch.device("cuda"), abbreviated=False))
+                prof.step()
+                # Skip steps until we reach the resumed step
+                if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
+                    if step % args.gradient_accumulation_steps == 0:
+                        progress_bar.update(1)
+                    continue
 
-                    pixel_values, depths, normals, albedos, scribbles, rgbs       = batch["pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
-                                                                                    batch["depth_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
-                                                                                    batch["normal_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
-                                                                                    batch["alb_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
-                                                                                    batch["scb_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
-                                                                                    batch["rgb_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True)
+                with accelerator.accumulate(unet):
+                # with accelerator.accumulate(unet), accelerator.accumulate(vae_trainable):
+                    with accelerator.autocast():
 
-                    # conditional_pixel_values = pixel_values[:, 0:1, :, :, :]
-                    conditional_pixel_values = rgbs[:, 0:1, :, :, :]
+                        # first, load images from Relight images, depth, normal, albedo, mask, original images
+
+                        pixel_values, depths, normals, albedos, scribbles, rgbs       = batch["pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+                                                                                        batch["depth_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+                                                                                        batch["normal_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+                                                                                        batch["alb_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+                                                                                        batch["scb_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
+                                                                                        batch["rgb_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True)
+
+                        # conditional_pixel_values = pixel_values[:, 0:1, :, :, :]
+                        # conditional_pixel_values = rgbs[:, 0:1, :, :, :]
+                        conditional_pixel_values = rgbs
+                        # print("conditional_pixel_values", conditional_pixel_values.shape)
+
+                        # b x f x ch x W x H
+
+                        # print(pixel_values.shape)
+                        # print(depths.shape)
+                        # print(normals. shape)
+                        # print(albedos.shape)
+                        # print(scribbles.shape)
+                                                                                        
+
+                        # 2nd, repeat 1-ch to 3-ch for depth and scribbles
+
+
+                        # # Add encoded images to trainable vae
+
+                        # mask_blended = blend_tensors(albedos, scribbles, blend_ratio=(1-args.mse_weight)).to(weight_dtype).to(accelerator.device, non_blocking=True)
+                        # mask_blended = mask_blended.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels                
+                        # mask_blended = rearrange(mask_blended, "b f c h w -> (b f) c h w")
+
+                        # # print(mask_blended.shape)
+                        # mask_blended = F.interpolate(mask_blended, scale_factor=0.5, mode="bilinear", align_corners=False)
+                        # mask_blended = rearrange(mask_blended, "(b f) c h w -> b f c h w", f=albedos.shape[1])
+
+                        # # print(mask_blended.shape)
+
+                        #     # encode (0.5*mask + 0.5*albedo_gray) **3 to improve the 1st ch
+                        # mask_latents = tensor_to_vae_latent(mask_blended, vae_trainable)
+                        #     # decode (0.5*mask + 0.5*albedo_gray) **3 to get the 1st ch
+                        # recon_shd = latent_to_tensor(mask_latents, vae_trainable, frames = mask_latents.shape[1])
+                        
+                        # recon_shd = rearrange(recon_shd, "b f c h w -> (b f) c h w")
+                        # recon_shd = F.interpolate(recon_shd, scale_factor=2.0, mode="bilinear", align_corners=False)
+                        # recon_shd = rearrange(recon_shd, "(b f) c h w -> b f c h w", f=albedos.shape[1])
+
+                        # # recon_shd = latent_to_tensor(mask_latents, vae_trainable)
+
+                        # recon_shd = recon_shd[:, :, 0:1, :, :]
+
+                        # shd_loss = F.mse_loss(recon_shd, shading_gt, reduction='mean')
+                        # shd_loss = (1-args.mse_weight)* lpips_vgg(recon_shd[0], shading_gt[0]).mean() + args.mse_weight * F.mse_loss(recon_shd, shading_gt, reduction='mean')
+
+                        depths_exp = depths.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels
+                        scribbles_exp = scribbles.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels
+                        # shading = recon_shd.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels
+                        
+                        # 3rd, convert images to latent space then concatenate
+                        with torch.no_grad():
+
+                            enc_rgb = tensor_to_vae_latent(rgbs, vae)
+                            enc_depth = tensor_to_vae_latent(depths_exp, vae)
+                            enc_nrm = tensor_to_vae_latent(normals, vae)
+                            enc_alb = tensor_to_vae_latent(albedos, vae)
+                            enc_scb = tensor_to_vae_latent(scribbles_exp, vae)
+                            # enc_shd = tensor_to_vae_latent(shading, vae)
+
+                            tgt_latents = tensor_to_vae_latent(pixel_values, vae)
+
+                        # add_latents = torch.cat([enc_depth, enc_nrm, enc_alb, enc_scb], dim=2)
+                        add_latents = torch.cat([enc_rgb, enc_depth, enc_nrm, enc_alb, enc_scb], dim=2)
+                        
+                        # 🚀 Free memory after use
+                        del enc_rgb, enc_depth, enc_nrm, enc_alb, enc_scb
+                        torch.cuda.empty_cache()  # Free GPU memory
+                        
+
+                        # Sample noise that we'll add to the latents
+                        noise = torch.randn_like(tgt_latents)
+                        bsz = tgt_latents.shape[0]
+
+                        cond_sigmas = rand_log_normal(shape=[bsz,], loc=-3.0, scale=0.5).to(tgt_latents)
+                        noise_aug_strength = cond_sigmas[0] # TODO: support batch > 1
+                        cond_sigmas = cond_sigmas[:, None, None, None, None]
+                        conditional_pixel_values = \
+                            torch.randn_like(conditional_pixel_values) * cond_sigmas + conditional_pixel_values
+                        # conditional_latents = tensor_to_vae_latent(conditional_pixel_values, vae)[:, 0, :, :, :]
+                        # ===== added part =====
+
+                        conditional_latents = tensor_to_vae_latent(conditional_pixel_values, vae)
+                        del conditional_pixel_values
+                        # ===== added part =====
+
+                        conditional_latents = conditional_latents / vae.config.scaling_factor
+
+                        # Sample a random timestep for each image
+                        # P_mean=0.7 P_std=1.6
+                        sigmas = rand_log_normal(shape=[bsz,], loc=0.7, scale=1.6).to(tgt_latents.device)
+                        # Add noise to the latents according to the noise magnitude at each timestep
+                        # (this is the forward diffusion process)
+                        sigmas = sigmas[:, None, None, None, None]
+                        noisy_latents = tgt_latents + noise * sigmas
+                        timesteps = torch.Tensor(
+                            [0.25 * sigma.log() for sigma in sigmas]).to(accelerator.device)
+
+                        inp_noisy_latents = noisy_latents / ((sigmas**2 + 1) ** 0.5)
+
+                        # Get the text embedding for conditioning.
+                        # encoder_hidden_states = encode_image(
+                        #     pixel_values[:, 0, :, :, :].float())
+                        # encoder_hidden_states = encode_image(
+                        #     rgbs[:, 0, :, :, :].float())
                 
-                    # b x f x ch x W x H
+                        # ===== added part =====
 
-                    # print(pixel_values.shape)
-                    # print(depths.shape)
-                    # print(normals. shape)
-                    # print(albedos.shape)
-                    # print(scribbles.shape)
-                                                                                      
+                        encoded_frames = []                        
+                        # Loop over each frame in the sequence
+                        for i in range(rgbs.shape[1]):  # Assuming shape is (batch, frames, ch, w, h)
+                            encoded_frame = encode_image(rgbs[:, i, :, :, :].float())  # Encode each frame separately
+                            encoded_frames.append(encoded_frame)
+                        
+                        # Convert list to tensor and concatenate along the frame dimension
+                        encoded_frames = torch.stack(encoded_frames, dim=1)  # Shape: (batch, frames, 1024)
 
-                    # 2nd, repeat 1-ch to 3-ch for depth and scribbles
+                        # Aggregate the frames using mean or max pooling
+                        # encoder_hidden_states = encoded_frames.mean(dim=1)  # Mean pooling
+                        encoder_hidden_states = encoded_frames.reshape(-1, encoded_frames.shape[-1])  # Directly shape to [batch*frames, 1, 1024]
+                        # print(encoder_hidden_states.shape)
+                        # print(encoded_frames.mean(dim=1).shape)
+                        del encoded_frames
+                        # ===== added part =====
 
-
-                    # # Add encoded images to trainable vae
-
-                    # mask_blended = blend_tensors(albedos, scribbles, blend_ratio=(1-args.mse_weight)).to(weight_dtype).to(accelerator.device, non_blocking=True)
-                    # mask_blended = mask_blended.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels                
-                    # mask_blended = rearrange(mask_blended, "b f c h w -> (b f) c h w")
-
-                    # # print(mask_blended.shape)
-                    # mask_blended = F.interpolate(mask_blended, scale_factor=0.5, mode="bilinear", align_corners=False)
-                    # mask_blended = rearrange(mask_blended, "(b f) c h w -> b f c h w", f=albedos.shape[1])
-
-                    # # print(mask_blended.shape)
-
-                    #     # encode (0.5*mask + 0.5*albedo_gray) **3 to improve the 1st ch
-                    # mask_latents = tensor_to_vae_latent(mask_blended, vae_trainable)
-                    #     # decode (0.5*mask + 0.5*albedo_gray) **3 to get the 1st ch
-                    # recon_shd = latent_to_tensor(mask_latents, vae_trainable, frames = mask_latents.shape[1])
-                    
-                    # recon_shd = rearrange(recon_shd, "b f c h w -> (b f) c h w")
-                    # recon_shd = F.interpolate(recon_shd, scale_factor=2.0, mode="bilinear", align_corners=False)
-                    # recon_shd = rearrange(recon_shd, "(b f) c h w -> b f c h w", f=albedos.shape[1])
-
-                    # # recon_shd = latent_to_tensor(mask_latents, vae_trainable)
-
-                    # recon_shd = recon_shd[:, :, 0:1, :, :]
-
-                    # shd_loss = F.mse_loss(recon_shd, shading_gt, reduction='mean')
-                    # shd_loss = (1-args.mse_weight)* lpips_vgg(recon_shd[0], shading_gt[0]).mean() + args.mse_weight * F.mse_loss(recon_shd, shading_gt, reduction='mean')
-
-                    depths_exp = depths.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels
-                    scribbles_exp = scribbles.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels
-                    # shading = recon_shd.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels
-                    
-                    # 3rd, convert images to latent space then concatenate
-                    with torch.no_grad():
-
-                        enc_rgb = tensor_to_vae_latent(rgbs, vae)
-                        enc_depth = tensor_to_vae_latent(depths_exp, vae)
-                        enc_nrm = tensor_to_vae_latent(normals, vae)
-                        enc_alb = tensor_to_vae_latent(albedos, vae)
-                        enc_scb = tensor_to_vae_latent(scribbles_exp, vae)
-                        # enc_shd = tensor_to_vae_latent(shading, vae)
-
-                        tgt_latents = tensor_to_vae_latent(pixel_values, vae)
-
-                    # add_latents = torch.cat([enc_depth, enc_nrm, enc_alb, enc_scb], dim=2)
-                    add_latents = torch.cat([enc_rgb, enc_depth, enc_nrm, enc_alb, enc_scb], dim=2)
-                    
-                    # 🚀 Free memory after use
-                    del enc_rgb, enc_depth, enc_nrm, enc_alb, enc_scb
-                    torch.cuda.empty_cache()  # Free GPU memory
-                    
-
-                    # Sample noise that we'll add to the latents
-                    noise = torch.randn_like(tgt_latents)
-                    bsz = tgt_latents.shape[0]
-
-                    cond_sigmas = rand_log_normal(shape=[bsz,], loc=-3.0, scale=0.5).to(tgt_latents)
-                    noise_aug_strength = cond_sigmas[0] # TODO: support batch > 1
-                    cond_sigmas = cond_sigmas[:, None, None, None, None]
-                    conditional_pixel_values = \
-                        torch.randn_like(conditional_pixel_values) * cond_sigmas + conditional_pixel_values
-                    conditional_latents = tensor_to_vae_latent(conditional_pixel_values, vae)[:, 0, :, :, :]
-                    conditional_latents = conditional_latents / vae.config.scaling_factor
-
-                    # Sample a random timestep for each image
-                    # P_mean=0.7 P_std=1.6
-                    sigmas = rand_log_normal(shape=[bsz,], loc=0.7, scale=1.6).to(tgt_latents.device)
-                    # Add noise to the latents according to the noise magnitude at each timestep
-                    # (this is the forward diffusion process)
-                    sigmas = sigmas[:, None, None, None, None]
-                    noisy_latents = tgt_latents + noise * sigmas
-                    timesteps = torch.Tensor(
-                        [0.25 * sigma.log() for sigma in sigmas]).to(accelerator.device)
-
-                    inp_noisy_latents = noisy_latents / ((sigmas**2 + 1) ** 0.5)
-
-                    # Get the text embedding for conditioning.
-                    # encoder_hidden_states = encode_image(
-                    #     pixel_values[:, 0, :, :, :].float())
-                    encoder_hidden_states = encode_image(
-                        rgbs[:, 0, :, :, :].float())
-
-
-                    # Here I input a fixed numerical value for 'motion_bucket_id', which is not reasonable.
-                    # However, I am unable to fully align with the calculation method of the motion score,
-                    # so I adopted this approach. The same applies to the 'fps' (frames per second).
-                    added_time_ids = _get_add_time_ids(
-                        7, # fixed
-                        127, # motion_bucket_id = 127, fixed
-                        noise_aug_strength, # noise_aug_strength == cond_sigmas
-                        encoder_hidden_states.dtype,
-                        bsz,
-                    )
-                    added_time_ids = added_time_ids.to(tgt_latents.device)
-
-                    # Conditioning dropout to support classifier-free guidance during inference. For more details
-                    # check out the section 3.2.1 of the original paper https://arxiv.org/abs/2211.09800.
-                    if args.conditioning_dropout_prob is not None:
-                        random_p = torch.rand(
-                            bsz, device=tgt_latents.device, generator=generator)
-                        # Sample masks for the edit prompts.
-                        prompt_mask = random_p < 2 * args.conditioning_dropout_prob
-                        prompt_mask = prompt_mask.reshape(bsz, 1, 1)
-                        # Final text conditioning.
-                        null_conditioning = torch.zeros_like(encoder_hidden_states)
-                        encoder_hidden_states = torch.where(
-                            prompt_mask, null_conditioning.unsqueeze(1), encoder_hidden_states.unsqueeze(1))
-                        # Sample masks for the original images.
-                        image_mask_dtype = conditional_latents.dtype
-                        image_mask = 1 - (
-                            (random_p >= args.conditioning_dropout_prob).to(
-                                image_mask_dtype)
-                            * (random_p < 3 * args.conditioning_dropout_prob).to(image_mask_dtype)
+                        # Here I input a fixed numerical value for 'motion_bucket_id', which is not reasonable.
+                        # However, I am unable to fully align with the calculation method of the motion score,
+                        # so I adopted this approach. The same applies to the 'fps' (frames per second).
+                        added_time_ids = _get_add_time_ids(
+                            7, # fixed
+                            127, # motion_bucket_id = 127, fixed
+                            noise_aug_strength, # noise_aug_strength == cond_sigmas
+                            encoder_hidden_states.dtype,
+                            bsz,
                         )
-                        image_mask = image_mask.reshape(bsz, 1, 1, 1)
-                        # Final image conditioning.
-                        conditional_latents = image_mask * conditional_latents
+                        added_time_ids = added_time_ids.to(tgt_latents.device)
 
-                    # Concatenate the `conditional_latents` with the `noisy_latents`.
-                    conditional_latents = conditional_latents.unsqueeze(
-                        1).repeat(1, noisy_latents.shape[1], 1, 1, 1)
-                    # inp_noisy_latents = torch.cat(
-                    #     [inp_noisy_latents, conditional_latents], dim=2)
+                        # Conditioning dropout to support classifier-free guidance during inference. For more details
+                        # check out the section 3.2.1 of the original paper https://arxiv.org/abs/2211.09800.
+                        if args.conditioning_dropout_prob is not None:
+                            random_p = torch.rand(
+                                bsz, device=tgt_latents.device, generator=generator)
+                            # Sample masks for the edit prompts.
+                            prompt_mask = random_p < 2 * args.conditioning_dropout_prob
+                            prompt_mask = prompt_mask.reshape(bsz, 1, 1)
+                            # Final text conditioning.
+                            null_conditioning = torch.zeros_like(encoder_hidden_states)
+                            encoder_hidden_states = torch.where(
+                                prompt_mask, null_conditioning.unsqueeze(1), encoder_hidden_states.unsqueeze(1))
+                            # Sample masks for the original images.
+                            image_mask_dtype = conditional_latents.dtype
+                            image_mask = 1 - (
+                                (random_p >= args.conditioning_dropout_prob).to(
+                                    image_mask_dtype)
+                                * (random_p < 3 * args.conditioning_dropout_prob).to(image_mask_dtype)
+                            )
+                            image_mask = image_mask.reshape(bsz, 1, 1, 1)
+                            # Final image conditioning.
+                            conditional_latents = image_mask * conditional_latents
 
-                    inp_noisy_latents = torch.cat(
-                        [inp_noisy_latents, conditional_latents, add_latents], dim=2)
-                    
-                    # print(inp_noisy_latents.shape)
+                        # Concatenate the `conditional_latents` with the `noisy_latents`.
+                        
+                        # conditional_latents = conditional_latents.unsqueeze(
+                        #     1).repeat(1, noisy_latents.shape[1], 1, 1, 1)
+                        # ===== added part =====
 
-                    # check https://arxiv.org/abs/2206.00364(the EDM-framework) for more details.
-                    # target = latents
-                    target = tgt_latents
+                        conditional_latents = conditional_latents
+                        # ===== added part =====
 
-                    model_pred = unet(
-                        inp_noisy_latents, timesteps, encoder_hidden_states, added_time_ids=added_time_ids).sample
+                        # print(inp_noisy_latents.shape, conditional_latents.shape, add_latents.shape)
+                        # print("encoder_hidden_states", encoder_hidden_states.shape)
 
-                    # Denoise the latents
-                    c_out = -sigmas / ((sigmas**2 + 1)**0.5)
-                    c_skip = 1 / (sigmas**2 + 1)
-                    denoised_latents = model_pred * c_out + c_skip * noisy_latents
-                    weighing = (1 + sigmas ** 2) * (sigmas**-2.0)
+                        # inp_noisy_latents = torch.cat(
+                        #     [inp_noisy_latents, conditional_latents], dim=2)
 
-                    # MSE loss
-                    loss = torch.mean(
-                        (weighing.float() * (denoised_latents.float() -
-                        target.float()) ** 2).reshape(target.shape[0], -1),
-                        dim=1,
-                    )
-                    loss = loss.mean()
+                        inp_noisy_latents = torch.cat(
+                            [inp_noisy_latents, conditional_latents, add_latents], dim=2)
+                        
+                        # print(inp_noisy_latents.shape)
 
-                    # # add shading recontruction loss
-                    # loss += shd_loss
-                    
-                    # Gather the losses across all processes for logging (if we use distributed training).
-                    avg_loss = accelerator.gather(
-                        loss.repeat(args.per_gpu_batch_size)).mean()
-                    train_loss += avg_loss.item() / args.gradient_accumulation_steps
+                        # check https://arxiv.org/abs/2206.00364(the EDM-framework) for more details.
+                        # target = latents
+                        target = tgt_latents
+                        
+                        # print(encoder_hidden_states.shape)
 
-                # Backpropagate
-                accelerator.backward(loss)
-                # if accelerator.sync_gradients:
-                #     accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
-                optimizer.step()
-                lr_scheduler.step()
-                optimizer.zero_grad()
+                        model_pred = unet(
+                            inp_noisy_latents, timesteps, encoder_hidden_states, added_time_ids=added_time_ids).sample
 
-            # Checks if the accelerator has performed an optimization step behind the scenes
-            if accelerator.sync_gradients:
-                if args.use_ema:
-                    ema_unet.step(unet.parameters())
-                progress_bar.update(1)
-                global_step += 1
-                accelerator.log({"train_loss": train_loss}, step=global_step)
-                train_loss = 0.0
+                        # Denoise the latents
+                        c_out = -sigmas / ((sigmas**2 + 1)**0.5)
+                        c_skip = 1 / (sigmas**2 + 1)
+                        denoised_latents = model_pred * c_out + c_skip * noisy_latents
+                        weighing = (1 + sigmas ** 2) * (sigmas**-2.0)
 
-                if accelerator.is_main_process:
-                    # save checkpoints!
-                    if global_step % args.checkpointing_steps == 0:
-                        # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
-                        if args.checkpoints_total_limit is not None:
-                            checkpoints = os.listdir(args.output_dir)
-                            checkpoints = [
-                                d for d in checkpoints if d.startswith("checkpoint")]
-                            checkpoints = sorted(
-                                checkpoints, key=lambda x: int(x.split("-")[1]))
+                        # MSE loss
+                        loss = torch.mean(
+                            (weighing.float() * (denoised_latents.float() -
+                            target.float()) ** 2).reshape(target.shape[0], -1),
+                            dim=1,
+                        )
+                        loss = loss.mean()
 
-                            # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
-                            if len(checkpoints) >= args.checkpoints_total_limit:
-                                num_to_remove = len(
-                                    checkpoints) - args.checkpoints_total_limit + 1
-                                removing_checkpoints = checkpoints[0:num_to_remove]
+                        # # add shading recontruction loss
+                        # loss += shd_loss
+                        
+                        # Gather the losses across all processes for logging (if we use distributed training).
+                        avg_loss = accelerator.gather(
+                            loss.repeat(args.per_gpu_batch_size)).mean()
+                        train_loss += avg_loss.item() / args.gradient_accumulation_steps
 
-                                logger.info(
-                                    f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
-                                )
-                                logger.info(
-                                    f"removing checkpoints: {', '.join(removing_checkpoints)}")
+                    # Backpropagate
+                    accelerator.backward(loss)
+                    # if accelerator.sync_gradients:
+                    #     accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
+                    optimizer.step()
+                    lr_scheduler.step()
+                    optimizer.zero_grad()
 
-                                for removing_checkpoint in removing_checkpoints:
-                                    removing_checkpoint = os.path.join(
-                                        args.output_dir, removing_checkpoint)
-                                    shutil.rmtree(removing_checkpoint)
+                # Checks if the accelerator has performed an optimization step behind the scenes
+                if accelerator.sync_gradients:
+                    if args.use_ema:
+                        ema_unet.step(unet.parameters())
+                    progress_bar.update(1)
+                    global_step += 1
+                    accelerator.log({"train_loss": train_loss}, step=global_step)
+                    train_loss = 0.0
 
-                        save_path = os.path.join(
-                            args.output_dir, f"checkpoint-{global_step}")
-                        accelerator.save_state(save_path)
-                        logger.info(f"Saved state to {save_path}")
-                    # # sample images!
-                    # if (
-                    #     (global_step % args.validation_steps == 0)
-                    #     or (global_step == 1)
-                    # ):
-                    #     logger.info(
-                    #         f"Running validation... \n Generating {args.num_validation_images} videos."
-                    #     )
-                    #     # create pipeline
-                    #     if args.use_ema:
-                    #         # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                    #         ema_unet.store(unet.parameters())
-                    #         ema_unet.copy_to(unet.parameters())
-                    #     # The models need unwrapping because for compatibility in distributed training mode.
-                    #     pipeline = StableVideoDiffusionPipeline.from_pretrained(
-                    #         args.pretrained_model_name_or_path,
-                    #         unet=accelerator.unwrap_model(unet),
-                    #         image_encoder=accelerator.unwrap_model(
-                    #             image_encoder),
-                    #         vae=accelerator.unwrap_model(vae),
-                    #         revision=args.revision,
-                    #         torch_dtype=weight_dtype,
-                    #     )
-                    #     pipeline = pipeline.to(accelerator.device)
-                    #     pipeline.set_progress_bar_config(disable=True)
+                    if accelerator.is_main_process:
+                        # save checkpoints!
+                        if global_step % args.checkpointing_steps == 0:
+                            # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
+                            if args.checkpoints_total_limit is not None:
+                                checkpoints = os.listdir(args.output_dir)
+                                checkpoints = [
+                                    d for d in checkpoints if d.startswith("checkpoint")]
+                                checkpoints = sorted(
+                                    checkpoints, key=lambda x: int(x.split("-")[1]))
 
-                    #     # run inference
-                    #     val_save_dir = os.path.join(
-                    #         args.output_dir, "validation_images")
+                                # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
+                                if len(checkpoints) >= args.checkpoints_total_limit:
+                                    num_to_remove = len(
+                                        checkpoints) - args.checkpoints_total_limit + 1
+                                    removing_checkpoints = checkpoints[0:num_to_remove]
 
-                    #     if not os.path.exists(val_save_dir):
-                    #         os.makedirs(val_save_dir)
+                                    logger.info(
+                                        f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
+                                    )
+                                    logger.info(
+                                        f"removing checkpoints: {', '.join(removing_checkpoints)}")
 
-                    #     with torch.autocast(
-                    #         str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
-                    #     ):
-                    #         for val_img_idx in range(args.num_validation_images):
-                    #             num_frames = args.num_frames
-                    #             video_frames = pipeline(
-                    #                 load_image('demo.jpg').resize((args.width, args.height)),
-                    #                 height=args.height,
-                    #                 width=args.width,
-                    #                 num_frames=num_frames,
-                    #                 decode_chunk_size=8,
-                    #                 motion_bucket_id=127,
-                    #                 fps=7,
-                    #                 noise_aug_strength=0.02,
-                    #                 # generator=generator,
-                    #             ).frames[0]
+                                    for removing_checkpoint in removing_checkpoints:
+                                        removing_checkpoint = os.path.join(
+                                            args.output_dir, removing_checkpoint)
+                                        shutil.rmtree(removing_checkpoint)
 
-                    #             out_file = os.path.join(
-                    #                 val_save_dir,
-                    #                 f"step_{global_step}_val_img_{val_img_idx}.mp4",
-                    #             )
+                            save_path = os.path.join(
+                                args.output_dir, f"checkpoint-{global_step}")
+                            accelerator.save_state(save_path)
+                            logger.info(f"Saved state to {save_path}")
+                        # # sample images!
+                        # if (
+                        #     (global_step % args.validation_steps == 0)
+                        #     or (global_step == 1)
+                        # ):
+                        #     logger.info(
+                        #         f"Running validation... \n Generating {args.num_validation_images} videos."
+                        #     )
+                        #     # create pipeline
+                        #     if args.use_ema:
+                        #         # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
+                        #         ema_unet.store(unet.parameters())
+                        #         ema_unet.copy_to(unet.parameters())
+                        #     # The models need unwrapping because for compatibility in distributed training mode.
+                        #     pipeline = StableVideoDiffusionPipeline.from_pretrained(
+                        #         args.pretrained_model_name_or_path,
+                        #         unet=accelerator.unwrap_model(unet),
+                        #         image_encoder=accelerator.unwrap_model(
+                        #             image_encoder),
+                        #         vae=accelerator.unwrap_model(vae),
+                        #         revision=args.revision,
+                        #         torch_dtype=weight_dtype,
+                        #     )
+                        #     pipeline = pipeline.to(accelerator.device)
+                        #     pipeline.set_progress_bar_config(disable=True)
 
-                    #             for i in range(num_frames):
-                    #                 img = video_frames[i]
-                    #                 video_frames[i] = np.array(img)
-                    #             export_to_gif(video_frames, out_file, 8)
+                        #     # run inference
+                        #     val_save_dir = os.path.join(
+                        #         args.output_dir, "validation_images")
 
-                        if args.use_ema:
-                            # Switch back to the original UNet parameters.
-                            ema_unet.restore(unet.parameters())
+                        #     if not os.path.exists(val_save_dir):
+                        #         os.makedirs(val_save_dir)
 
-                        # del pipeline
-                        # torch.cuda.empty_cache()
+                        #     with torch.autocast(
+                        #         str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
+                        #     ):
+                        #         for val_img_idx in range(args.num_validation_images):
+                        #             num_frames = args.num_frames
+                        #             video_frames = pipeline(
+                        #                 load_image('demo.jpg').resize((args.width, args.height)),
+                        #                 height=args.height,
+                        #                 width=args.width,
+                        #                 num_frames=num_frames,
+                        #                 decode_chunk_size=8,
+                        #                 motion_bucket_id=127,
+                        #                 fps=7,
+                        #                 noise_aug_strength=0.02,
+                        #                 # generator=generator,
+                        #             ).frames[0]
 
-            logs = {"step_loss": loss.detach().item(
-            ), "lr": lr_scheduler.get_last_lr()[0]}
-            progress_bar.set_postfix(**logs)
+                        #             out_file = os.path.join(
+                        #                 val_save_dir,
+                        #                 f"step_{global_step}_val_img_{val_img_idx}.mp4",
+                        #             )
 
-            if global_step >= args.max_train_steps:
-                break
+                        #             for i in range(num_frames):
+                        #                 img = video_frames[i]
+                        #                 video_frames[i] = np.array(img)
+                        #             export_to_gif(video_frames, out_file, 8)
+
+                            # if args.use_ema:
+                            #     # Switch back to the original UNet parameters.
+                            #     ema_unet.restore(unet.parameters())
+
+                            # del pipeline
+                            # torch.cuda.empty_cache()
+
+                logs = {"step_loss": loss.detach().item(
+                ), "lr": lr_scheduler.get_last_lr()[0]}
+                progress_bar.set_postfix(**logs)
+                # prof.step()
+                print(prof.key_averages().table(sort_by="cpu_memory_usage", row_limit=10))
+
+
+                if global_step >= args.max_train_steps:
+                    break
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()

@@ -391,13 +391,13 @@ def make_train_dataset(args):
     # dataset = MultiIlluminationDataset(args.video_folder,
     #                                     frame_size=25, sample_n_frames=25)
     dataset = SyncDataset(args.video_folder,
-                                        frame_size=25, sample_n_frames=25)
+                                        frame_size=25, sample_n_frames=12)
 
     return dataset
 
 def make_test_dataset(args):
     dataset = MultiIlluminationDataset("/sdb5/data/test/",
-                                        frame_size=25, sample_n_frames=25)
+                                        frame_size=25, sample_n_frames=12)
     return dataset
 
 
@@ -1214,9 +1214,9 @@ def main():
 
     #controlnet.to(accelerator.device, dtype=weight_dtype)
     # Create EMA for the unet.
-    # if args.use_ema:
-    #     ema_controlnet = EMAModel(unet.parameters(
-    #     ), model_cls=UNetSpatioTemporalConditionModel, model_config=unet.config)
+    if args.use_ema:
+        ema_unet = EMAModel(unet.parameters(
+        ), model_cls=UNetSpatioTemporalConditionModel, model_config=unet.config)
 
     # if args.enable_xformers_memory_efficient_attention:
     #     if is_xformers_available():
@@ -1374,7 +1374,8 @@ def main():
                                                                         batch["scb_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True), \
                                                                         batch["rgb_pixel_values"].to(weight_dtype).to(accelerator.device, non_blocking=True)
 
-        input_image = albedos[:, 0:1, :, :, :]
+        input_image = rgbs[:, 0:1, :, :, :]
+        input_image = rgbs
 
         print(input_image[0].shape)
         # input_image = (input_image+1)/2
@@ -1409,14 +1410,14 @@ def main():
         video_frames = pipeline(
             input_image[0],
             # g_buffer= [depths, normals, albedos, shading],
-            g_buffer= [rgbs, depths, normals, albedos, scribbles],
+            g_buffer= [rgbs, depths, normals, albedos, scribbles, pixel_values],
             height=256,
             width=256,
-            num_frames= 25,
+            num_frames= 12,
             decode_chunk_size=8,
             motion_bucket_id=127,
             fps=7,
-            noise_aug_strength=0.02,
+            noise_aug_strength=0.09,
             generator=generator,
         ).frames[0]
 
@@ -1431,14 +1432,14 @@ def main():
 
         out_file = os.path.join(
             val_save_dir,
-            f"val_img_800_syn_l.mp4",
+            f"val_img_7500_syn_fast.mp4",
         )
         out_file_gt = os.path.join(
             val_save_dir,
-            f"val_gt_800_syn_l.mp4",
+            f"val_gt_7500_syn_fast.mp4",
         )
 
-        for i in range(25):
+        for i in range(12):
             img = video_frames[i]
             video_frames[i] = np.array(img)
         export_to_gif(video_frames, out_file, 8)
@@ -1471,7 +1472,7 @@ def main():
         #     img_np = (img_np * 255).astype(np.uint8)
         #     video_frames[i] = img_np
 
-        for i in range(25):
+        for i in range(12):
             img_np = pixel_values[0][i].detach().cpu().numpy()  # Convert to NumPy array
             img_np = np.transpose(img_np, (1, 2, 0))
             img_np = (img_np * 255).astype(np.uint8)

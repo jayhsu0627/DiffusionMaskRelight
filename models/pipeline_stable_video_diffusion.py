@@ -52,6 +52,11 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+# copy from https://github.com/crowsonkb/k-diffusion.git
+def rand_log_normal(shape, loc=0., scale=1., device='cpu', dtype=torch.float32):
+    """Draws samples from an lognormal distribution."""
+    u = torch.rand(shape, dtype=dtype, device=device) * (1 - 2e-7) + 1e-7
+    return torch.distributions.Normal(loc, scale).icdf(u).exp()
 
 def _append_dims(x, target_dims):
     """Appends dimensions to the end of a tensor until it has target_dims dimensions."""
@@ -210,6 +215,35 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         image_latents = image_latents.repeat(num_videos_per_prompt, 1, 1, 1)
 
         return image_latents
+
+    # ===== added part =====
+    def _encode_vae_image_mod(
+        self,
+        image: torch.Tensor,
+        device: Union[str, torch.device],
+        num_videos_per_prompt: int,
+        do_classifier_free_guidance: bool,
+    ):
+        image = image.to(device=device)
+        image_latents = self.vae.encode(image).latent_dist.mode()
+
+        # to make image_latents (batch * frame, ch, w, h) -> (batch, frame, ch, w, h)
+        # image_latents = image_latents.unsqueeze(0)
+
+        # print("debug", image_latents.shape)
+        if do_classifier_free_guidance:
+            negative_image_latents = torch.zeros_like(image_latents)
+
+            # For classifier free guidance, we need to do two forward passes.
+            # Here we concatenate the unconditional and text embeddings into a single batch
+            # to avoid doing two forward passes
+            image_latents = torch.cat([negative_image_latents, image_latents])
+
+        # duplicate image_latents for each generation per prompt, using mps friendly method
+        image_latents = image_latents.repeat(num_videos_per_prompt, 1, 1, 1)
+
+        return image_latents
+    # ===== added part =====
 
     def _get_add_time_ids(
         self,
@@ -460,6 +494,8 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
         # 3. Encode input image
         image_embeddings = self._encode_image(image, device, num_videos_per_prompt, self.do_classifier_free_guidance)
+        # temp_emb = self._encode_image(image[0], device, num_videos_per_prompt, self.do_classifier_free_guidance)
+        # print("should be ", image_embeddings.shape, "to", temp_emb.shape)
 
         # NOTE: Stable Video Diffusion was conditioned on fps - 1, which is why it is reduced here.
         # See: https://github.com/Stability-AI/generative-models/blob/ed0997173f98eaf8f4edf7ba5fe8f15c6b877fd3/scripts/sampling/simple_video_sample.py#L188
@@ -473,13 +509,16 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
         if needs_upcasting:
             self.vae.to(dtype=torch.float32)
-
-        image_latents = self._encode_vae_image(
+        
+        # ===== added part =====
+        image_latents = self._encode_vae_image_mod(
             image,
             device=device,
             num_videos_per_prompt=num_videos_per_prompt,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
         )
+        # ===== added part =====
+
         image_latents = image_latents.to(image_embeddings.dtype)
 
         # cast back to fp16 if needed
@@ -488,12 +527,20 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
         # Repeat the image latents for each frame so we can concatenate them with the noise
         # image_latents [batch, channels, height, width] ->[batch, num_frames, channels, height, width]
-        image_latents = image_latents.unsqueeze(1).repeat(1, num_frames, 1, 1, 1)
+        # image_latents = image_latents.unsqueeze(1).repeat(1, num_frames, 1, 1, 1)
+        
+        print('before', image_latents.shape)
+        
+        # image_latents [batch*num_frames, channels, height, width] ->[batch, num_frames, channels, height, width]
+        video_length = image.shape[0]
+        image_latents = rearrange(image_latents, "(b f) c h w -> b f c h w", f=video_length)
+
+        print('after', image_latents.shape)
 
         # ===== added part =====
         # image was -1 to 1
         # depths, normals, albedos, scribbles = g_buffer
-        rgbs, depths, normals, albedos, scribbles = g_buffer
+        rgbs, depths, normals, albedos, scribbles, pixel_values = g_buffer
 
         # 2nd, repeat 1-ch to 3-ch for depth and scribbles
         
@@ -514,7 +561,9 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             enc_nrm = self.tensor_to_vae_latent(normals, self.vae)
             enc_alb = self.tensor_to_vae_latent(albedos, self.vae)
             enc_scb = self.tensor_to_vae_latent(scribbles_exp, self.vae)
-        
+
+            enc_relight = self.tensor_to_vae_latent(pixel_values, self.vae)
+
         if self.do_classifier_free_guidance:
             negative_image_embeddings = torch.zeros_like(enc_depth)
             enc_rgb = torch.cat([negative_image_embeddings, enc_rgb])
@@ -523,8 +572,8 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             enc_alb = torch.cat([negative_image_embeddings, enc_alb])
             enc_scb = torch.cat([negative_image_embeddings, enc_scb])
 
-        add_latents = torch.cat([enc_depth, enc_nrm, enc_alb, enc_scb], dim=2)
-        # add_latents = torch.cat([enc_rgb, enc_depth, enc_nrm, enc_alb, enc_scb], dim=2)
+        # add_latents = torch.cat([enc_depth, enc_nrm, enc_alb, enc_scb], dim=2)
+        add_latents = torch.cat([enc_rgb, enc_depth, enc_nrm, enc_alb, enc_scb], dim=2)
 
         # 🚀 Free memory after use
         del enc_rgb, enc_depth, enc_nrm, enc_alb, enc_scb
@@ -548,6 +597,17 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         # 6. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
+        print("time steps:", self.scheduler.timesteps)
+
+        remapped_timesteps = (timesteps - timesteps.min()) / (timesteps.max() - timesteps.min()) * (1.47 - (-0.8)) + (-0.8)
+        timesteps = remapped_timesteps.cpu()
+        self.scheduler.config.use_karras_sigmas = False
+        self.scheduler.config.prediction_type = None
+        self.scheduler.set_timesteps(timesteps=timesteps)
+
+        print("time steps:", timesteps)
+        print("scheduler steps:", self.scheduler.timesteps)
+        self.scheduler.config.prediction_type = "v_prediction"
 
         # 7. Prepare latent variables
         # num_channels_latents = self.unet.config.in_channels
@@ -587,8 +647,10 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 # print(latents.shape)
                 # print(latent_model_input.shape)
+        # ===== added part =====
 
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+        # ===== added part =====
 
                 # print(latent_model_input.shape)
                 # print(image_latents.shape)
@@ -642,6 +704,34 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             frames = tensor2vid(frames, self.image_processor, output_type=output_type)
         else:
             frames = latents
+
+        # Define the MSE loss function
+        criterion = torch.nn.MSELoss()
+        loss = criterion(enc_relight, latents)
+
+        print("latents loss:", loss)
+
+
+
+        # P_mean=0.7 P_std=1.6
+        sigmas = rand_log_normal(shape=[1,], loc=0.7, scale=1.6).to(latents.device)
+        # Add noise to the latents according to the noise magnitude at each timestep
+        # (this is the forward diffusion process)
+        sigmas = sigmas[:, None, None, None, None]
+        weighing = (1 + sigmas ** 2) * (sigmas**-2.0)
+
+        cond_sigmas = rand_log_normal(shape=[1,], loc=-3.0, scale=0.5).to(latents.device)
+        noise_aug_strength = cond_sigmas[0] # TODO: support batch > 1
+        print("noise_aug_strength", noise_aug_strength)
+        # MSE loss
+        loss = torch.mean(
+            (weighing.float() * (enc_relight.float() -
+                latents.float()) ** 2).reshape(latents.shape[0], -1),
+            dim=1,
+        )
+        loss = loss.mean()
+        print("train loss:", loss)
+        print("train weighing:", weighing)
 
         self.maybe_free_model_hooks()
 

@@ -1,7 +1,0 @@
-{"time":"2025-02-15T02:01:05.330603707Z","level":"INFO","msg":"stream: starting","core version":"0.19.6","symlink path":"/sdb5/DiffusionMaskRelight/wandb/run-20250215_020105-26icqz3d/logs/debug-core.log"}
-{"time":"2025-02-15T02:01:05.434350851Z","level":"INFO","msg":"created new stream","id":"26icqz3d"}
-{"time":"2025-02-15T02:01:05.434390312Z","level":"INFO","msg":"stream: started","id":"26icqz3d"}
-{"time":"2025-02-15T02:01:05.434442956Z","level":"INFO","msg":"sender: started","stream_id":"26icqz3d"}
-{"time":"2025-02-15T02:01:05.434980941Z","level":"INFO","msg":"writer: Do: started","stream_id":"26icqz3d"}
-{"time":"2025-02-15T02:01:05.435016326Z","level":"INFO","msg":"handler: started","stream_id":"26icqz3d"}
-{"time":"2025-02-15T02:01:05.547680586Z","level":"INFO","msg":"Starting system monitor"}
