@@ -48,7 +48,9 @@ from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 from einops import rearrange
 
 import diffusers
-from diffusers import StableVideoDiffusionPipeline
+# from diffusers import StableVideoDiffusionPipeline
+from models.pipeline_stable_video_diffusion import StableVideoDiffusionPipeline
+
 from diffusers.models.lora import LoRALinearLayer
 from diffusers import AutoencoderKLTemporalDecoder, EulerDiscreteScheduler
 from diffusers.image_processor import VaeImageProcessor
@@ -355,12 +357,12 @@ def parse_args():
     parser.add_argument(
         "--width",
         type=int,
-        default=1024,
+        default=256,
     )
     parser.add_argument(
         "--height",
         type=int,
-        default=576,
+        default=256,
     )
     parser.add_argument(
         "--num_validation_images",
@@ -1251,10 +1253,40 @@ def main():
                         # shd_loss = F.mse_loss(recon_shd, shading_gt, reduction='mean')
                         # shd_loss = (1-args.mse_weight)* lpips_vgg(recon_shd[0], shading_gt[0]).mean() + args.mse_weight * F.mse_loss(recon_shd, shading_gt, reduction='mean')
 
+                        
+                        tgt_latents = tensor_to_vae_latent(pixel_values, vae)
+
+                        # Sample noise that we'll add to the latents
+                        noise = torch.randn_like(tgt_latents)
+                        bsz = tgt_latents.shape[0]
+
+                        cond_sigmas = rand_log_normal(shape=[bsz,], loc=-3.0, scale=0.5).to(tgt_latents)
+                        noise_aug_strength = cond_sigmas[0] # TODO: support batch > 1
+                        cond_sigmas = cond_sigmas[:, None, None, None, None]
+                        cond_noise = torch.randn_like(conditional_pixel_values)
+                        conditional_pixel_values = cond_noise * cond_sigmas + conditional_pixel_values
+                        # conditional_latents = tensor_to_vae_latent(conditional_pixel_values, vae)[:, 0, :, :, :]
+
+                        # ===== added part =====
+
+                        conditional_latents = tensor_to_vae_latent(conditional_pixel_values, vae)
+                        del conditional_pixel_values
+                        # ===== added part =====
+
+                        conditional_latents = conditional_latents / vae.config.scaling_factor
+
+
                         depths_exp = depths.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels
                         scribbles_exp = scribbles.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels
                         # shading = recon_shd.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels
-                        
+
+                        # rgbs_exp = cond_noise * cond_sigmas + rgbs
+                        # depths_exp = cond_noise * cond_sigmas + depths_exp
+                        # normals_exp = cond_noise * cond_sigmas + normals
+                        # albedos_exp = cond_noise * cond_sigmas + albedos
+                        # scribbles_exp = cond_noise * cond_sigmas + scribbles_exp
+
+
                         # 3rd, convert images to latent space then concatenate
                         with torch.no_grad():
 
@@ -1265,7 +1297,12 @@ def main():
                             enc_scb = tensor_to_vae_latent(scribbles_exp, vae)
                             # enc_shd = tensor_to_vae_latent(shading, vae)
 
-                            tgt_latents = tensor_to_vae_latent(pixel_values, vae)
+
+                            # enc_rgb = enc_rgb / vae.config.scaling_factor
+                            # enc_depth = enc_depth / vae.config.scaling_factor
+                            # enc_nrm = enc_nrm / vae.config.scaling_factor
+                            # enc_alb = enc_alb / vae.config.scaling_factor
+                            # enc_scb = enc_scb / vae.config.scaling_factor
 
                         # add_latents = torch.cat([enc_depth, enc_nrm, enc_alb, enc_scb], dim=2)
                         add_latents = torch.cat([enc_rgb, enc_depth, enc_nrm, enc_alb, enc_scb], dim=2)
@@ -1273,36 +1310,22 @@ def main():
                         # 🚀 Free memory after use
                         del enc_rgb, enc_depth, enc_nrm, enc_alb, enc_scb
                         torch.cuda.empty_cache()  # Free GPU memory
-                        
 
-                        # Sample noise that we'll add to the latents
-                        noise = torch.randn_like(tgt_latents)
-                        bsz = tgt_latents.shape[0]
-
-                        cond_sigmas = rand_log_normal(shape=[bsz,], loc=-3.0, scale=0.5).to(tgt_latents)
-                        noise_aug_strength = cond_sigmas[0] # TODO: support batch > 1
-                        cond_sigmas = cond_sigmas[:, None, None, None, None]
-                        conditional_pixel_values = \
-                            torch.randn_like(conditional_pixel_values) * cond_sigmas + conditional_pixel_values
-                        # conditional_latents = tensor_to_vae_latent(conditional_pixel_values, vae)[:, 0, :, :, :]
-                        # ===== added part =====
-
-                        conditional_latents = tensor_to_vae_latent(conditional_pixel_values, vae)
-                        del conditional_pixel_values
-                        # ===== added part =====
-
-                        conditional_latents = conditional_latents / vae.config.scaling_factor
 
                         # Sample a random timestep for each image
                         # P_mean=0.7 P_std=1.6
                         sigmas = rand_log_normal(shape=[bsz,], loc=0.7, scale=1.6).to(tgt_latents.device)
+                        # sigmas = rand_log_normal(shape=[bsz,], loc=0.0, scale=2.0).to(tgt_latents.device)
+                        # sigmas = rand_log_normal(shape=[bsz,], loc=1.5, scale=1.6).to(tgt_latents.device)
+
                         # Add noise to the latents according to the noise magnitude at each timestep
                         # (this is the forward diffusion process)
                         sigmas = sigmas[:, None, None, None, None]
                         noisy_latents = tgt_latents + noise * sigmas
                         timesteps = torch.Tensor(
                             [0.25 * sigma.log() for sigma in sigmas]).to(accelerator.device)
-
+                        
+                        # C_in
                         inp_noisy_latents = noisy_latents / ((sigmas**2 + 1) ** 0.5)
 
                         # Get the text embedding for conditioning.
@@ -1364,6 +1387,7 @@ def main():
                             image_mask = image_mask.reshape(bsz, 1, 1, 1)
                             # Final image conditioning.
                             conditional_latents = image_mask * conditional_latents
+                            # add_latents = image_mask * add_latents
 
                         # Concatenate the `conditional_latents` with the `noisy_latents`.
                         
@@ -1384,10 +1408,10 @@ def main():
                             [inp_noisy_latents, conditional_latents, add_latents], dim=2)
                         
                         # print(inp_noisy_latents.shape)
-
+                        del conditional_latents, add_latents
+                        
                         # check https://arxiv.org/abs/2206.00364(the EDM-framework) for more details.
                         # target = latents
-                        target = tgt_latents
                         
                         # print(encoder_hidden_states.shape)
 
@@ -1403,7 +1427,7 @@ def main():
                         # MSE loss
                         loss = torch.mean(
                             (weighing.float() * (denoised_latents.float() -
-                            target.float()) ** 2).reshape(target.shape[0], -1),
+                            tgt_latents.float()) ** 2).reshape(tgt_latents.shape[0], -1),
                             dim=1,
                         )
                         loss = loss.mean()
@@ -1465,72 +1489,113 @@ def main():
                                 args.output_dir, f"checkpoint-{global_step}")
                             accelerator.save_state(save_path)
                             logger.info(f"Saved state to {save_path}")
-                        # # sample images!
-                        # if (
-                        #     (global_step % args.validation_steps == 0)
-                        #     or (global_step == 1)
-                        # ):
-                        #     logger.info(
-                        #         f"Running validation... \n Generating {args.num_validation_images} videos."
-                        #     )
-                        #     # create pipeline
-                        #     if args.use_ema:
-                        #         # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                        #         ema_unet.store(unet.parameters())
-                        #         ema_unet.copy_to(unet.parameters())
-                        #     # The models need unwrapping because for compatibility in distributed training mode.
-                        #     pipeline = StableVideoDiffusionPipeline.from_pretrained(
-                        #         args.pretrained_model_name_or_path,
-                        #         unet=accelerator.unwrap_model(unet),
-                        #         image_encoder=accelerator.unwrap_model(
-                        #             image_encoder),
-                        #         vae=accelerator.unwrap_model(vae),
-                        #         revision=args.revision,
-                        #         torch_dtype=weight_dtype,
-                        #     )
-                        #     pipeline = pipeline.to(accelerator.device)
-                        #     pipeline.set_progress_bar_config(disable=True)
+                        
+                        # sample images!
+                        if (
+                            (global_step % args.validation_steps == 0)
+                            or (global_step == 1)
+                        ):
+                            logger.info(
+                                f"Running validation... \n Generating {args.num_validation_images} videos."
+                            )
+                            # create pipeline
+                            if args.use_ema:
+                                # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
+                                ema_unet.store(unet.parameters())
+                                ema_unet.copy_to(unet.parameters())
+                            # The models need unwrapping because for compatibility in distributed training mode.
+                            pipeline = StableVideoDiffusionPipeline.from_pretrained(
+                                args.pretrained_model_name_or_path,
+                                unet=accelerator.unwrap_model(unet),
+                                image_encoder=accelerator.unwrap_model(
+                                    image_encoder),
+                                vae=accelerator.unwrap_model(vae),
+                                revision=args.revision,
+                                torch_dtype=weight_dtype,
+                            )
+                            pipeline = pipeline.to(accelerator.device)
+                            pipeline.set_progress_bar_config(disable=True)
 
-                        #     # run inference
-                        #     val_save_dir = os.path.join(
-                        #         args.output_dir, "validation_images")
+                            # run inference
+                            val_save_dir = os.path.join(args.output_dir, "validation_images")
 
-                        #     if not os.path.exists(val_save_dir):
-                        #         os.makedirs(val_save_dir)
+                            if not os.path.exists(val_save_dir):
+                                os.makedirs(val_save_dir)
 
-                        #     with torch.autocast(
-                        #         str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
-                        #     ):
-                        #         for val_img_idx in range(args.num_validation_images):
-                        #             num_frames = args.num_frames
-                        #             video_frames = pipeline(
-                        #                 load_image('demo.jpg').resize((args.width, args.height)),
-                        #                 height=args.height,
-                        #                 width=args.width,
-                        #                 num_frames=num_frames,
-                        #                 decode_chunk_size=8,
-                        #                 motion_bucket_id=127,
-                        #                 fps=7,
-                        #                 noise_aug_strength=0.02,
-                        #                 # generator=generator,
-                        #             ).frames[0]
+                            with torch.autocast(
+                                str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
+                            ):
+                                for val_img_idx in range(args.num_validation_images):
+                                    num_frames = args.num_frames
+                                    video_frames = pipeline(
+                                        # load_image('demo.jpg').resize((args.width, args.height)),
+                                        (rgbs[0]+1)/2,
+                                        g_buffer= [rgbs, depths, normals, albedos, scribbles, pixel_values],
+                                        height=args.height,
+                                        width=args.width,
+                                        num_frames=num_frames,
+                                        decode_chunk_size=8,
+                                        motion_bucket_id=127,
+                                        fps=7,
+                                        noise_aug_strength=0.02,
+                                        # generator=generator,
+                                    ).frames[0]
 
-                        #             out_file = os.path.join(
-                        #                 val_save_dir,
-                        #                 f"step_{global_step}_val_img_{val_img_idx}.mp4",
-                        #             )
+                                    out_file = os.path.join(
+                                        val_save_dir,
+                                        f"step_{global_step}_val_img_{val_img_idx}.mp4",
+                                    )
 
-                        #             for i in range(num_frames):
-                        #                 img = video_frames[i]
-                        #                 video_frames[i] = np.array(img)
-                        #             export_to_gif(video_frames, out_file, 8)
+                                    for i in range(num_frames):
+                                        img = video_frames[i]
+                                        video_frames[i] = np.array(img)
+                                    export_to_gif(video_frames, out_file, 8)
+                                    gt_video_frames = [0] * num_frames
 
-                            # if args.use_ema:
-                            #     # Switch back to the original UNet parameters.
-                            #     ema_unet.restore(unet.parameters())
+                                    for i in range(num_frames):
+                                        img_np = pixel_values[0][i].detach().cpu().numpy()  # Convert to NumPy array
+                                        img_np = np.transpose(img_np, (1, 2, 0))
+                                        img_np = (img_np+1)/2
+                                        img_np = (img_np * 255).astype(np.uint8)
+                                        gt_video_frames[i] = img_np
 
-                            # del pipeline
-                            # torch.cuda.empty_cache()
+                                    arr1 = torch.from_numpy(np.stack(video_frames, axis=0))  # Shape becomes (n, ...)
+                                    arr2 = torch.from_numpy(np.stack(gt_video_frames, axis=0))
+
+                                    # Compute the Mean Squared Error (MSE)
+                                    # First create the loss function
+                                    loss_fn = torch.nn.MSELoss()
+                                    # Then apply it to your tensors
+                                    test_loss = loss_fn(arr1.float(), arr2.float())
+
+                                    accelerator.log({"test_loss": test_loss}, step=global_step)
+
+                                    # flattened_batch_output = [img for sublist in video_frames for img in sublist]
+
+                                    accelerator.log({
+                                        "gt_img_0": [wandb.Image(gt_video_frames[0] ,caption="Ground Truth 0")],
+                                        "pred_img_0": [wandb.Image(video_frames[0], caption="Prediction 0")],
+                                        "gt_img_1": [wandb.Image(gt_video_frames[1] ,caption="Ground Truth 1")],
+                                        "pred_img_1": [wandb.Image(video_frames[1], caption="Prediction 1")],
+                                        "gt_img_2": [wandb.Image(gt_video_frames[2] ,caption="Ground Truth 2")],
+                                        "pred_img_2": [wandb.Image(video_frames[2], caption="Prediction 2")],
+                                        "gt_img_3": [wandb.Image(gt_video_frames[3] ,caption="Ground Truth 3")],
+                                        "pred_img_3": [wandb.Image(video_frames[3], caption="Prediction 3")],
+                                        "gt_img_4": [wandb.Image(gt_video_frames[4] ,caption="Ground Truth 4")],
+                                        "pred_img_4": [wandb.Image(video_frames[4], caption="Prediction 4")],
+                                        "gt_img_5": [wandb.Image(gt_video_frames[5] ,caption="Ground Truth 5")],
+                                        "pred_img_5": [wandb.Image(video_frames[5], caption="Prediction 5")],
+                                        "gt_img_-1": [wandb.Image(gt_video_frames[-1] ,caption="Ground Truth 5")],
+                                        "pred_img_-1": [wandb.Image(video_frames[-1], caption="Prediction 5")],
+
+                                    }, step=global_step)
+
+                            if args.use_ema:
+                                # Switch back to the original UNet parameters.
+                                ema_unet.restore(unet.parameters())
+
+                            del pipeline
+                            torch.cuda.empty_cache()
 
                 logs = {"step_loss": loss.detach().item(
                 ), "lr": lr_scheduler.get_last_lr()[0]}

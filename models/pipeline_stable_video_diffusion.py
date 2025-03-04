@@ -230,7 +230,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         # to make image_latents (batch * frame, ch, w, h) -> (batch, frame, ch, w, h)
         # image_latents = image_latents.unsqueeze(0)
 
-        # print("debug", image_latents.shape)
+        print("debug", image_latents.shape)
         if do_classifier_free_guidance:
             negative_image_latents = torch.zeros_like(image_latents)
 
@@ -371,7 +371,8 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         video_length = t.shape[1]
 
         t = rearrange(t, "b f c h w -> (b f) c h w")
-        latents = vae.encode(t).latent_dist.sample()
+        # latents = vae.encode(t).latent_dist.sample()
+        latents = vae.encode(t).latent_dist.mode()
         latents = rearrange(latents, "(b f) c h w -> b f c h w", f=video_length)
         latents = latents * vae.config.scaling_factor
 
@@ -505,6 +506,27 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         image = self.image_processor.preprocess(image, height=height, width=width).to(device)
         noise = randn_tensor(image.shape, generator=generator, device=device, dtype=image.dtype)
         image = image + noise_aug_strength * noise
+        # ===== added part =====
+        # image was -1 to 1
+        # depths, normals, albedos, scribbles = g_buffer
+        # first, load images from Relight images, depth, normal, albedo, mask, original images
+
+        # pixel_values, depths, normals, albedos, scribbles, rgbs = g_buffer
+        rgbs, depths, normals, albedos, scribbles, pixel_values = g_buffer
+
+        # 2nd, repeat 1-ch to 3-ch for depth and scribbles
+        depths_exp = depths.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels
+        scribbles_exp = scribbles.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels
+        
+        # rgbs = rgbs + noise_aug_strength * noise
+        # depths_exp = depths_exp + noise_aug_strength * noise
+        # normals = normals + noise_aug_strength * noise
+        # albedos = albedos + noise_aug_strength * noise
+        # scribbles_exp = scribbles_exp + noise_aug_strength * noise
+        
+        # print(rgbs.shape, depths_exp.shape, normals.shape, albedos.shape, scribbles_exp.shape)
+        
+        # ===== added part =====
 
         needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
         if needs_upcasting:
@@ -517,6 +539,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             num_videos_per_prompt=num_videos_per_prompt,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
         )
+
         # ===== added part =====
 
         image_latents = image_latents.to(image_embeddings.dtype)
@@ -537,22 +560,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
         print('after', image_latents.shape)
 
-        # ===== added part =====
-        # image was -1 to 1
-        # depths, normals, albedos, scribbles = g_buffer
-        rgbs, depths, normals, albedos, scribbles, pixel_values = g_buffer
-
-        # 2nd, repeat 1-ch to 3-ch for depth and scribbles
-        
-        depths_exp = depths.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels
-        scribbles_exp = scribbles.repeat(1, 1, 3, 1, 1)  # Expand along dim=2 to 3 channels
-        
-        # depths_exp = (depths_exp+1)/2
-        # normals = (normals+1)/2
-        # albedos = (albedos+1)/2
-        # scribbles_exp = (scribbles_exp+1)/2
-
-
+        # ===== added part =====        
         # 3rd, convert images to latent space then concatenate
         with torch.no_grad():
 
@@ -597,17 +605,18 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         # 6. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
-        print("time steps:", self.scheduler.timesteps)
+        # print("time steps:", self.scheduler.timesteps)
 
-        remapped_timesteps = (timesteps - timesteps.min()) / (timesteps.max() - timesteps.min()) * (1.47 - (-0.8)) + (-0.8)
-        timesteps = remapped_timesteps.cpu()
-        self.scheduler.config.use_karras_sigmas = False
-        self.scheduler.config.prediction_type = None
-        self.scheduler.set_timesteps(timesteps=timesteps)
+        # remapped_timesteps = (timesteps - timesteps.min()) / (timesteps.max() - timesteps.min()) * (1.47 - (-0.8)) + (-0.8)
+        # timesteps = remapped_timesteps.cpu()
+        # self.scheduler.config.use_karras_sigmas = False
+        # self.scheduler.config.prediction_type = None
+        # self.scheduler.set_timesteps(timesteps=timesteps)
 
-        print("time steps:", timesteps)
-        print("scheduler steps:", self.scheduler.timesteps)
-        self.scheduler.config.prediction_type = "v_prediction"
+        # print("time steps:", timesteps)
+
+        # print("scheduler steps:", self.scheduler.timesteps)
+        # self.scheduler.config.prediction_type = "v_prediction"
 
         # 7. Prepare latent variables
         # num_channels_latents = self.unet.config.in_channels
@@ -647,10 +656,9 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 # print(latents.shape)
                 # print(latent_model_input.shape)
-        # ===== added part =====
-
+                # ===== added part =====
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-        # ===== added part =====
+                # ===== added part =====
 
                 # print(latent_model_input.shape)
                 # print(image_latents.shape)
@@ -659,7 +667,8 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
                 # latent_model_input = torch.cat([latent_model_input, image_latents], dim=2)
 
                 # ===== added part =====
-                print(latent_model_input.shape, image_latents.shape, add_latents.shape)
+                # print(latent_model_input.shape, image_latents.shape, add_latents.shape)
+
                 latent_model_input = torch.cat([latent_model_input, image_latents, add_latents], dim=2)
                 # print(image_latents.shape)
                 # print(add_latents.shape)
@@ -705,33 +714,34 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         else:
             frames = latents
 
-        # Define the MSE loss function
-        criterion = torch.nn.MSELoss()
-        loss = criterion(enc_relight, latents)
+        # # Define the MSE loss function
+        # criterion = torch.nn.MSELoss()
+        # loss = criterion(enc_relight, latents)
 
-        print("latents loss:", loss)
+        # print("latents loss:", loss)
 
 
 
-        # P_mean=0.7 P_std=1.6
-        sigmas = rand_log_normal(shape=[1,], loc=0.7, scale=1.6).to(latents.device)
-        # Add noise to the latents according to the noise magnitude at each timestep
-        # (this is the forward diffusion process)
-        sigmas = sigmas[:, None, None, None, None]
-        weighing = (1 + sigmas ** 2) * (sigmas**-2.0)
+        # # P_mean=0.7 P_std=1.6
+        # sigmas = rand_log_normal(shape=[1,], loc=0.7, scale=1.6).to(latents.device)
+        # # Add noise to the latents according to the noise magnitude at each timestep
+        # # (this is the forward diffusion process)
+        # sigmas = sigmas[:, None, None, None, None]
+        # weighing = (1 + sigmas ** 2) * (sigmas**-2.0)
 
-        cond_sigmas = rand_log_normal(shape=[1,], loc=-3.0, scale=0.5).to(latents.device)
-        noise_aug_strength = cond_sigmas[0] # TODO: support batch > 1
-        print("noise_aug_strength", noise_aug_strength)
-        # MSE loss
-        loss = torch.mean(
-            (weighing.float() * (enc_relight.float() -
-                latents.float()) ** 2).reshape(latents.shape[0], -1),
-            dim=1,
-        )
-        loss = loss.mean()
-        print("train loss:", loss)
-        print("train weighing:", weighing)
+        # cond_sigmas = rand_log_normal(shape=[1,], loc=-3.0, scale=0.5).to(latents.device)
+        # noise_aug_strength = cond_sigmas[0] # TODO: support batch > 1
+        # # print("noise_aug_strength", noise_aug_strength)
+
+        # # MSE loss
+        # loss = torch.mean(
+        #     (weighing.float() * (enc_relight.float() -
+        #         latents.float()) ** 2).reshape(latents.shape[0], -1),
+        #     dim=1,
+        # )
+        # loss = loss.mean()
+        # print("train loss:", loss)
+        # # print("train weighing:", weighing)
 
         self.maybe_free_model_hooks()
 

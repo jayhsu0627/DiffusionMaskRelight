@@ -48,7 +48,9 @@ def numpy_to_pt(images: np.ndarray) -> torch.FloatTensor:
         images = images[..., None]
     print(images.shape)
     images = torch.from_numpy(images.transpose(0, 3, 1, 2))
-    return images.float() / 255  # Normalize to [0,1]
+    # return images.float() / 255  # Normalize to [0,1]
+
+    return (images.float() / 127.5 -1).to(torch.float16)  # Normalize to [0,1]
 
 class PreprocessAndSaveDataset:
     def __init__(self, root_dir, save_dir, sample_n_frames=14):
@@ -64,8 +66,8 @@ class PreprocessAndSaveDataset:
 
         # Define transformations
         self.transforms = ImageSequential(
-            K.SmallestMaxSize(256, p=1.0),
-            K.CenterCrop((256, 256)),
+            K.SmallestMaxSize(128, p=1.0),
+            K.CenterCrop((128, 128)),
             same_on_batch=True
         )
 
@@ -100,7 +102,7 @@ class PreprocessAndSaveDataset:
 
             # Extract scene name
             scene_name = os.path.basename(scene_path)
-            save_path = os.path.join(self.save_dir, f"{scene_name}.pkl")
+            save_path = os.path.join(self.save_dir, f"{scene_name}_small.pkl")
 
             # if os.path.exists(save_path):
             #     print(f"Skipping {scene_name}, already processed.")
@@ -159,6 +161,7 @@ class SyncDataset(Dataset):
         """
         self.preprocessed_dir = preprocessed_dir
         self.file_list = sorted(glob.glob(os.path.join(preprocessed_dir, "*.pkl")))
+        print(self.file_list)
         self.max_frames = max_frames  # New variable to limit frame count
         self.weight_dtype = torch.float32
 
@@ -209,6 +212,12 @@ if __name__ == "__main__":
     print(alb_pixel_values.shape)
     print(scb_pixel_values.shape)
     print(rgb_pixel_values.shape)
+    pixel_values = (pixel_values+1)/2
+    depth_pixel_values = (depth_pixel_values+1)/2
+    normal_pixel_values = (normal_pixel_values+1)/2
+    alb_pixel_values = (alb_pixel_values+1)/2
+    scb_pixel_values = (scb_pixel_values+1)/2
+    rgb_pixel_values = (rgb_pixel_values+1)/2
 
     save_array_as_image(pixel_values[0]*255, "/fs/nexus-scratch/sjxu/DiffusionMaskRelight/outputs/sync/rgb_01.png")
     save_array_as_image(pixel_values[5]*255, "/fs/nexus-scratch/sjxu/DiffusionMaskRelight/outputs/sync/rgb_06.png")

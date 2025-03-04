@@ -1432,11 +1432,11 @@ def main():
 
         out_file = os.path.join(
             val_save_dir,
-            f"val_img_7500_syn_fast.mp4",
+            f"val_img_7500_syn_old.mp4",
         )
         out_file_gt = os.path.join(
             val_save_dir,
-            f"val_gt_7500_syn_fast.mp4",
+            f"val_gt_7500_syn_old.mp4",
         )
 
         for i in range(12):
